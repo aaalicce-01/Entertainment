@@ -7674,7 +7674,13 @@ $('#av-scene-reopen').on('click', function() {
       return;
     }
 
-    var combinedText = unreplied.map(function(m) { return m.text; }).join('\n');
+    var combinedText = unreplied.map(function(m) {
+      if (m.type === 'sticker') return '[玩家发了一张表情包]';
+      if (m.type === 'voice') return '[玩家发了一条语音：' + (m.voiceText || '') + ']';
+      if (m.type === 'image') return '[玩家发了一张图片]';
+      if (m.type === 'location') return '[玩家分享了一个位置：' + (m.locationName || '') + ']';
+      return m.text;
+    }).join('\n');
 
     var reply = await _fanReplyApi(_commFanContact, data[_commFanContact], combinedText);
 
@@ -10046,54 +10052,31 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
           var g = _getGroup(_commGroupId);
           if (g) {
             if (!g.messages) g.messages = [];
-            g.messages.push({ from: 'user', text: url, type: 'sticker', ts: Date.now() });
+            g.messages.push({ from: 'user', text: url, type: 'sticker', ts: Date.now(), replied: false });
             _setGroup(_commGroupId, g);
             $('#av-group-sticker-panel').hide();
             _drawComm($c);
-            /* AI 回应 */
-            _groupCallApi(_commGroupId, '[玩家发了一张表情包]').then(function(reply) {
-              if (reply) {
-                var replies = _parseGroupReply(reply);
-                var g2 = _getGroup(_commGroupId);
-                if (!g2) return;
-                if (!g2.messages) g2.messages = [];
-                var baseTs = Date.now();
-                for (var i = 0; i < replies.length; i++) {
-                  g2.messages.push({ from: replies[i].from, text: replies[i].text, ts: baseTs + i * 800 });
-                }
-                _setGroup(_commGroupId, g2);
-                _drawComm($c);
-              }
-            });
+            /* ═══ 不再自动触发 AI，等玩家点 💬 回复 ═══ */
           }
           return;
         }
         if (_commTab === 'sms' && _commContact) {
           var data = _loadSmsData();
           if (!data[_commContact]) data[_commContact] = [];
-          data[_commContact].push({ from: 'user', text: url, type: 'sticker' });
+          /* 标记为"待回复"，这样按 💬 回复 时才会一起处理 */
+          data[_commContact].push({ from: 'user', text: url, type: 'sticker', replied: false });
           _saveSmsData(data);
           $('#av-sms-sticker-panel').hide();
           _drawComm($c);
-          /* AI 回应 */
-          _smsCallApi(_commContact, '[玩家发了一张表情包]', 'sms').then(function(reply) {
-            if (reply) {
-              data = _loadSmsData();
-              var msgs = _parseMsgBlocks(reply);
-              for (var i = 0; i < msgs.length; i++) {
-                data[_commContact].push({ from: _commContact, text: msgs[i] });
-              }
-              _saveSmsData(data);
-              _drawComm($c);
-            }
-          });
+          /* ═══ 不再自动触发 AI，等玩家点 💬 回复 ═══ */
         } else if (_commTab === 'fan' && _commFanContact) {
           var fdata = _loadFanMsgs();
           if (fdata[_commFanContact]) {
-            fdata[_commFanContact].messages.push({ from: 'user', text: url, type: 'sticker' });
+            fdata[_commFanContact].messages.push({ from: 'user', text: url, type: 'sticker', replied: false });
             _saveFanMsgs(fdata);
             $('#av-fan-sticker-panel').hide();
             _drawComm($c);
+            /* ═══ 不再自动触发 AI ═══ */
           }
         }
       }
@@ -12234,13 +12217,21 @@ o += '<button id="av-sms-send" title="发送并触发AI回复" style="flex-shrin
       }
     }
     if (!unreplied.length) {
-      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 没有需要回复的消息');
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity:info 没有需要回复的消息');
       return;
     }
 
-    /* ═══ 把未回复的消息合并成一个 prompt ═══ */
-    var combinedText = unreplied.map(function(m) { return m.text; }).join('\n');
-
+    /* ═══ 把未回复的消息合并成一个 prompt（表情/语音/图片转文字描述） ═══ */
+    var combinedText = unreplied.map(function(m) {
+      if (m.type === 'sticker') return '[玩家发了一张表情包]';
+      if (m.type === 'voice') return '[玩家发了一条语音：' + (m.voiceText || '') + ']';
+      if (m.type === 'image') return '[玩家发了一张图片]';
+      if (m.type === 'location') return '[玩家分享了一个位置：' + (m.locationName || '') + ']';
+      if (m.type === 'hongbao') return '[玩家发了一个红包：' + (m.amount || 0) + ']';
+      if (m.type === 'transfer') return '[玩家转账：' + (m.amount || 0) + ']';
+      return m.text;
+    }).join('\n');
+    
     /* ═══ 正在输入 ═══ */
     _showSmsTyping(_commContact);
 
