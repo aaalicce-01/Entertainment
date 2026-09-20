@@ -1014,7 +1014,7 @@ scriptCovers: {
     if (!speakerName) return false;
     /* 检查 SillyTavern 的 name1 */
     try {
-      var ctx = SillyTavern.getContext();
+      var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
       if (ctx && ctx.name1 && speakerName === ctx.name1) return true;
     } catch (e) { }
     /* 检查 MVU 的 user.姓名 */
@@ -2483,6 +2483,38 @@ function _getPairType(actorName, tmpl) {
   for (var _tgi = 0; _tgi < SCRIPT_TAGS.length; _tgi++) { var _tgn = SCRIPT_TAGS[_tgi]; TAG_GRADS[_tgn] = _defaultTagGrad(TAG_COLORS[_tgn] || '#808080'); }
 var SCRIPT_CACHE_KEY = 'av-scripts-cache-v2';
 var SCRIPT_CUR_KEY = 'av-script-current-v2';
+  /* ═══ 自定义清洗标签（用户可配置） ═══ */
+  var CUSTOM_CLEAN_TAGS_KEY = 'av-custom-clean-tags';
+  function _loadCustomCleanTags() {
+    try { var r = localStorage.getItem(CUSTOM_CLEAN_TAGS_KEY); if (r) { var arr = JSON.parse(r); return Array.isArray(arr) ? arr : []; } } catch (e) {}
+    return [];
+  }
+  function _saveCustomCleanTags(arr) {
+    try { localStorage.setItem(CUSTOM_CLEAN_TAGS_KEY, JSON.stringify(arr)); } catch (e) {}
+  }
+  function _addCustomCleanTag(tag) {
+    if (!tag) return;
+    tag = String(tag).replace(/[<>\s\/]/g, '').trim();
+    if (!tag) return;
+    var arr = _loadCustomCleanTags();
+    if (arr.indexOf(tag) >= 0) return;
+    arr.push(tag);
+    _saveCustomCleanTags(arr);
+  }
+  function _removeCustomCleanTag(tag) {
+    var arr = _loadCustomCleanTags().filter(function(t) { return t !== tag; });
+    _saveCustomCleanTags(arr);
+  }
+  /* 返回内置 SYS_TAGS + 用户自定义标签的完整数组 */
+  function _getAllSystemTags(builtinTags) {
+    var custom = _loadCustomCleanTags();
+    var merged = builtinTags.slice();
+    for (var i = 0; i < custom.length; i++) {
+      if (merged.indexOf(custom[i]) < 0) merged.push(custom[i]);
+    }
+    return merged;
+  }
+
   var SCRIPT_WB_NAME = '娱乐圈模拟器';
   var SCRIPT_WB_UID = 5; /* ⚠️ 新建条目后替换为实际UID */
   var _scriptFilter = [];
@@ -2943,7 +2975,7 @@ return scrs;
     /* ═══ 上下文提取工具 ═══ */
     function _getRecentContext(n) {
       try {
-        var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+        var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
         if (!context || !context.chat || !context.chat.length) return '';
         var chat = context.chat;
         var lines = [];
@@ -2976,7 +3008,7 @@ return scrs;
   async function _fetchActorPersona(name) {
     /* ═══ 优先从世界书读取 ═══ */
     try {
-      var ctx = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+      var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
       if (ctx && ctx.loadWorldInfo) {
         /* 取当前角色卡绑定的世界书名 */
         var worldName = '';
@@ -5040,7 +5072,85 @@ function _contrastColor(hex){
     '</div>';
 
   $('body').append(html);
-  _wireTrigger(); _wirePhone(); _wireDrag(); _wireResize();
+  _wireTrigger(); _wireDrag(); _wireResize();
+  /* 事件委托绑一次即可 */
+  _wirePhone();
+  /* ═══ 兜底：直接给三个按钮绑事件，不走委托 ═══ */
+  _wireTopButtonsDirect();
+}
+
+/* ═══ 直接绑定顶部三个按钮（不走委托，永不被 off 影响） ═══ */
+function _wireTopButtonsDirect() {
+  /* ▣ 切换尺寸 */
+  $('#av-size-btn').off('click.avDirect').on('click.avDirect', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var isFs = localStorage.getItem('av-fullscreen') !== '0';
+    isFs = !isFs;
+    localStorage.setItem('av-fullscreen', isFs ? '1' : '0');
+    if (typeof window._applySize === 'function') {
+      window._applySize();   /* 内部会重新读 localStorage */
+    } else {
+      var $o = $('#' + G.elIds.overlay);
+      if (isFs) {
+        $o.css({ top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100dvh', maxWidth: 'none', maxHeight: 'none', borderRadius: 0, border: 'none', margin: '0' });
+      } else {
+        $o.css({ top: '50px', left: 'auto', right: '20px', bottom: 'auto', width: '370px', height: '740px', maxWidth: '95vw', maxHeight: '90vh', borderRadius: '34px', border: '4px solid ' + _t().bezel, margin: '0' });
+      }
+    }
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 尺寸：' + (isFs ? '全屏' : '小窗'));
+  });
+
+  /* 📖 重开剧情 */
+  $('#av-reopen-btn').off('click.avDirect').on('click.avDirect', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log('[AV] 重开剧情按钮被点击');
+    try {
+      var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+      if (!context || !context.chat || !context.chat.length) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天记录');
+        return;
+      }
+      var chat = context.chat;
+      var lastAiMsg = null;
+      for (var mi = chat.length - 1; mi >= 0; mi--) {
+        if (!chat[mi].is_user) { lastAiMsg = chat[mi]; break; }
+      }
+      if (!lastAiMsg || !lastAiMsg.mes) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到AI回复');
+        return;
+      }
+      if (typeof ScenePlayer === 'undefined') {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error ScenePlayer 未加载');
+        return;
+      }
+      var segments = ScenePlayer.parse(lastAiMsg.mes);
+      if (segments && segments.length) {
+        ScenePlayer.state.lastMsgId = -1;
+        ScenePlayer.show(segments);
+        console.log('[AV] 剧情已打开，共 ' + segments.length + ' 段');
+      } else {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 最近的AI回复中没有可解析的剧情内容');
+      }
+    } catch(ex) {
+      console.error('[AV] 重开剧情失败:', ex);
+      console.error('[AV] 完整堆栈:', ex && ex.stack);
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 打开失败：' + (ex && ex.message ? ex.message : ex));
+    }
+  });
+
+  /* ✕ 关闭手机 */
+  $('#av-close-btn').off('click.avDirect').on('click.avDirect', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof _screen !== 'undefined' && _screen === 'comm' && typeof _flushNewSms === 'function') {
+      _flushNewSms();
+    }
+    if (typeof _toggle === 'function') _toggle();
+  });
+
+  console.log('[AV] 顶部三个按钮已直接绑定');
 }
 
   function _updateChrome() {
@@ -5050,7 +5160,101 @@ function _contrastColor(hex){
     $('#av-ph-time').text(h + ':00 ' + weekday);
   }
 
-  function _wireTrigger() {
+/* ═══ 手机操作菜单（右侧图片单击弹出） ═══ */
+function _showPhoneMenu() {
+  /* 已存在就直接关闭，防重复 */
+  if ($('#av-phone-menu-mask').length) { $('#av-phone-menu-mask').remove(); return; }
+
+  /* 临时干掉 body 的 transform */
+  var _bodyTransformBak = document.body.style.transform;
+  document.body.style.transform = 'none';
+
+  var t = _t();
+  var isFs = localStorage.getItem('av-fullscreen') !== '0';
+
+  var menuBg = t.bgCard || 'rgba(20,20,26,.95)';
+  var menuBd = 'rgba(255,255,255,.12)';
+  var txtColor = t.text || '#fff';
+
+  /* ═══ mask：铺满视口 + flex 居中（参考赞助视频弹窗） ═══ */
+  var html = '';
+  html += '<div id="av-phone-menu-mask" style="position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100dvh;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:transparent">';
+
+  /* 菜单本体：无任何定位属性，只靠 flex 居中 */
+  html += '<div id="av-phone-menu" style="width:180px;max-width:80vw;max-height:80vh;overflow-y:auto;background:' + menuBg + ';backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid ' + menuBd + ';border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:inherit;animation:avIn .18s ease">';
+
+  /* 全屏 / 小窗 */
+  html += '<div class="av-phone-menu-item" data-act="size" style="padding:14px 16px;cursor:pointer;font-size:13px;color:' + txtColor + ';display:flex;align-items:center;gap:12px;border-bottom:1px solid ' + menuBd + ';transition:background .15s">';
+  html += '<span style="font-size:16px;width:20px;text-align:center">' + (isFs ? '▢' : '▣') + '</span>';
+  html += '<span>' + (isFs ? '切换小窗' : '切换全屏') + '</span></div>';
+
+  /* 重开剧情 */
+  html += '<div class="av-phone-menu-item" data-act="reopen" style="padding:14px 16px;cursor:pointer;font-size:13px;color:' + txtColor + ';display:flex;align-items:center;gap:12px;border-bottom:1px solid ' + menuBd + ';transition:background .15s">';
+  html += '<span style="font-size:16px;width:20px;text-align:center">📖</span>';
+  html += '<span>重开剧情</span></div>';
+
+  /* 关闭手机 */
+  html += '<div class="av-phone-menu-item" data-act="close" style="padding:14px 16px;cursor:pointer;font-size:13px;color:#ff8080;display:flex;align-items:center;gap:12px;transition:background .15s">';
+  html += '<span style="font-size:16px;width:20px;text-align:center">✕</span>';
+  html += '<span>关闭手机</span></div>';
+
+  html += '</div>';   /* 关闭 av-phone-menu */
+  html += '</div>';   /* 关闭 av-phone-menu-mask */
+
+/* append 到 html（documentElement），避开 body 上的 transform 影响 */
+$('body').append(html);
+
+  var $menu = $('#av-phone-menu');
+  var $mask = $('#av-phone-menu-mask');
+
+  /* hover 效果 */
+  $menu.find('.av-phone-menu-item').on('mouseenter', function() { $(this).css('background', 'rgba(255,255,255,.08)'); });
+  $menu.find('.av-phone-menu-item').on('mouseleave', function() { $(this).css('background', 'transparent'); });
+
+  function _closeMenu() {
+    $('#av-phone-menu-mask').remove();
+    try { document.body.style.transform = _bodyTransformBak || ''; } catch(e) {}
+    $(document).off('click.avPhoneMenu touchstart.avPhoneMenu');
+  }
+
+  /* 点 mask 空白处关闭（点菜单内部不关闭） */
+  $mask.on('click.avPhoneMenu', function(e) {
+    if (e.target === this) _closeMenu();
+  });
+
+  /* 菜单项点击 */
+  $menu.find('.av-phone-menu-item').on('click', function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var act = $(this).data('act');
+
+    _closeMenu();
+
+    setTimeout(function() {
+      if (act === 'size') {
+        var isFs2 = localStorage.getItem('av-fullscreen') !== '0';
+        var next = !isFs2;
+        localStorage.setItem('av-fullscreen', next ? '1' : '0');
+        var $o = $('#' + G.elIds.overlay);
+        if (next) {
+          $o.css({ top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100dvh', maxWidth: 'none', maxHeight: 'none', borderRadius: 0, border: 'none', margin: '0' });
+        } else {
+          $o.css({ top: '50px', left: 'auto', right: '20px', bottom: 'auto', width: '370px', height: '740px', maxWidth: '95vw', maxHeight: '90vh', borderRadius: '34px', border: '4px solid ' + _t().bezel, margin: '0' });
+        }
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 尺寸：' + (next ? '全屏' : '小窗'));
+      } else if (act === 'reopen') {
+        $('#av-reopen-btn').trigger('click');
+      } else if (act === 'close') {
+        if (typeof _screen !== 'undefined' && _screen === 'comm' && typeof _flushNewSms === 'function') {
+          _flushNewSms();
+        }
+        if (typeof _toggle === 'function') _toggle();
+      }
+    }, 30);
+  });
+}
+
+function _wireTrigger() {
     const $el = $('#' + G.elIds.trigger), el = $el[0];
     let tD = false, mD = false, mP = false, ox, oy, sx, sy;
     $el.on('touchstart', e => { tD = false; const p = e.touches[0]; ox = p.clientX; oy = p.clientY; const r = el.getBoundingClientRect(); sx = r.left; sy = r.top; });
@@ -5063,12 +5267,12 @@ function _contrastColor(hex){
   }
 
 function _wirePhone() {
-  $('#av-close-btn').on('click', function(e) {
-  e.stopPropagation();
-  if (_screen === 'comm') { _flushNewSms(); }
-  _toggle();
-});
-  $('#av-home-pill').on('click', function() {
+  $(document).off('click.avPhone', '#av-close-btn').on('click.avPhone', '#av-close-btn', function(e) {
+    e.stopPropagation();
+    if (_screen === 'comm') { _flushNewSms(); }
+    _toggle();
+  });
+  $(document).off('click.avPhone', '#av-home-pill').on('click.avPhone', '#av-home-pill', function() {
     if (_screen === 'comm') { _flushNewSms(); }
     if (_screen !== 'home') { _screen = 'home'; _render(); }
   });
@@ -5076,7 +5280,10 @@ function _wirePhone() {
   var _isFullscreen = localStorage.getItem('av-fullscreen') !== '0';
 
   function _applySize() {
+    /* ═══ 每次调用都从 localStorage 重新读，避免闭包不同步 ═══ */
+    _isFullscreen = localStorage.getItem('av-fullscreen') !== '0';
     var $o = $('#' + G.elIds.overlay);
+    if (!$o.length) return;
     if (_isFullscreen) {
       $o.css({
         top: 0, left: 0, right: 0, bottom: 0,
@@ -5097,8 +5304,10 @@ function _wirePhone() {
   }
   window._applySize = _applySize;
   _applySize();
+  /* 保证 overlay 重建后仍能拿到最新的 _applySize */
+  window._avPhoneWired = true;
 
-  $('#av-size-btn').on('click', function(e) {
+  $(document).off('click.avPhone', '#av-size-btn').on('click.avPhone', '#av-size-btn', function(e) {
     e.stopPropagation();
     _isFullscreen = !_isFullscreen;
     localStorage.setItem('av-fullscreen', _isFullscreen ? '1' : '0');
@@ -5106,10 +5315,10 @@ function _wirePhone() {
     if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 尺寸：' + (_isFullscreen ? '全屏' : '小窗'));
   });
 
-  $('#av-reopen-btn').on('click', function (e) {
+  $(document).off('click.avPhone', '#av-reopen-btn').on('click.avPhone', '#av-reopen-btn', function (e) {
     e.stopPropagation();
     try {
-      var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+      var context = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
       if (!context || !context.chat || !context.chat.length) {
         if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天记录');
         return;
@@ -5131,9 +5340,12 @@ function _wirePhone() {
         } else {
           if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 最近的AI回复中没有可解析的剧情内容');
         }
+      } else {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error ScenePlayer 未加载');
       }
     } catch(ex) {
-      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 打开失败：' + (ex.message || ''));
+      console.error('[AV] 重开剧情失败:', ex);
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 打开失败：' + (ex && ex.message ? ex.message : ex));
     }
   });
 }
@@ -5214,9 +5426,9 @@ function _wirePhone() {
     var skillColor = skillRank === 'S' ? '#ffb060' : skillRank === 'A' ? '#ffd060' : skillRank === 'B' ? '#50c878' : skillRank === 'C' ? '#5080d0' : '#a0a0a0';
     o += `<div style="font-size:8px;color:${skillColor};letter-spacing:1px;font-weight:600">技能 ${skillRank}</div>`;
     o += `</div>`;
-    /* 右侧正方形：自定义图片 */
+    /* 右侧正方形：自定义图片（单击弹菜单） */
     const homeRight = _getHomeRight();
-    o += `<div style="flex:1;aspect-ratio:1;background:rgba(0,0,0,.72);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border-radius:24px;border:1px solid rgba(255,255,255,.06);box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;display:flex;align-items:center;justify-content:center">`;
+    o += `<div id="av-home-right-btn" style="flex:1;aspect-ratio:1;background:rgba(0,0,0,.72);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border-radius:24px;border:1px solid rgba(255,255,255,.06);box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s">`;
     if (homeRight) {
       o += `<div style="width:100%;height:100%;background-image:url('${homeRight}');background-size:cover;background-position:center"></div>`;
     } else {
@@ -5350,6 +5562,9 @@ function _wirePhone() {
     });
     $s.find('#av-home-avatar-btn').on('click', function() {
       _showRechargeDialog();
+    });
+    $s.find('#av-home-right-btn').on('click', function() {
+      _showPhoneMenu();
     });
 
     /* 播放器事件绑定 */
@@ -5976,7 +6191,10 @@ function _wirePhone() {
         }
 
         /* 2. 玩家判断 */
-        try { var stCtx = SillyTavern.getContext(); if (stCtx && stCtx.name1 && _clean(stCtx.name1) === _cleanName) return custom['__dialogue__'] || '#ffffff'; } catch(e) {}
+        try {
+          var stCtx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+          if (stCtx && stCtx.name1 && _clean(stCtx.name1) === _cleanName) return custom['__dialogue__'] || '#ffffff';
+        } catch(e) {}
         try { var uName = _v('user.姓名', ''); if (uName && _clean(uName) === _cleanName) return custom['__dialogue__'] || '#ffffff'; } catch(e) {}
 
         /* 3. 预设颜色：先精确，再模糊 */
@@ -6115,8 +6333,10 @@ function _wirePhone() {
             /* ── 脚本自己的标签（应在外层处理）── */
             /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
             /* ── 你自己遇到的额外标签，往这里加 ── */
-            'gossip'
+            'gossip',
+            'electric'
           ];
+          SYS_TAGS = _getAllSystemTags(SYS_TAGS);
           for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
             var tag = SYS_TAGS[_ti];
             /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
@@ -6533,7 +6753,7 @@ function _wirePhone() {
               _setCurScr(null);
               if (typeof triggerSlash === 'function') {
                 triggerSlash('/setentryfield file="' + SCRIPT_WB_NAME + '" uid=' + SCRIPT_WB_UID + ' field=content （空）');
-                triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5 | /trigger');
+                triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"AV"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
               }
               _screen = 'scripts'; _render();
             });
@@ -6777,6 +6997,27 @@ function _wirePhone() {
         html += '<div class="av-color-row"><span class="av-color-label">玩家对话文本</span><div class="av-color-swatch"><input type="color" data-key="__dialogue__" value="' + self._toHex(dlgColor) + '"></div><span class="av-color-reset" data-key="__dialogue__">重置</span></div>';
         html += '<div class="av-color-row"><span class="av-color-label">NPC默认色（路人/无名角色）</span><div class="av-color-swatch"><input type="color" data-key="__npc__" value="' + self._toHex(npcColor) + '"></div><span class="av-color-reset" data-key="__npc__">重置</span></div>';
 
+        /* ═══ 自定义清洗标签 ═══ */
+        html += '<div style="font-size:9px;color:rgba(255,255,255,.3);margin:14px 0 8px;letter-spacing:1px">🧹 自定义清洗标签</div>';
+        html += '<div style="font-size:8px;color:rgba(255,255,255,.4);line-height:1.6;margin-bottom:6px">AI 回复里用 &lt;标签&gt;...&lt;/标签&gt; 包裹的内容，会被整个删掉（不显示）</div>';
+        var _cleanTags = _loadCustomCleanTags();
+        html += '<div id="av-clean-tag-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+        if (_cleanTags.length) {
+          for (var _cti = 0; _cti < _cleanTags.length; _cti++) {
+            var _ctTag = _cleanTags[_cti];
+            html += '<span class="av-clean-tag" data-tag="' + _esc(_ctTag) + '" style="font-size:9px;padding:4px 10px;border-radius:10px;background:rgba(255,120,120,.12);color:rgba(255,160,160,.9);border:1px solid rgba(255,120,120,.3);cursor:pointer">';
+            html += _esc('<' + _ctTag + '>') + ' <span style="color:rgba(255,100,100,.6);margin-left:4px">×</span>';
+            html += '</span>';
+          }
+        } else {
+          html += '<span style="font-size:8px;color:rgba(255,255,255,.3);font-style:italic">还没加自定义标签</span>';
+        }
+        html += '</div>';
+        html += '<div style="display:flex;gap:6px">';
+        html += '<input id="av-clean-new-tag" type="text" placeholder="输入标签名（如：electric）" maxlength="20" style="flex:1;padding:6px 10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#fff;font-size:10px;outline:none;font-family:inherit">';
+        html += '<button id="av-clean-add-tag" style="padding:6px 14px;border-radius:8px;font-size:10px;cursor:pointer;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);font-family:inherit">＋ 添加</button>';
+        html += '</div>';
+
         /* ═══ 小剧场格式 ═══ */
         html += '<div style="font-size:9px;color:rgba(255,255,255,.3);margin:14px 0 8px;letter-spacing:1px">📖 小剧场格式</div>';
         var _snowFormats = _loadSnowFormats();
@@ -6856,6 +7097,24 @@ function _wirePhone() {
         $('#av-story-color-close').on('click', function() { $('#av-story-color-panel').remove(); });
 
         /* ═══ 小剧场格式：添加 / 删除 ═══ */
+        /* ═══ 自定义清洗标签：添加 / 删除 ═══ */
+        $('#av-clean-add-tag').on('click', function() {
+          var tag = $('#av-clean-new-tag').val().trim();
+          if (!tag) return;
+          _addCustomCleanTag(tag);
+          $('#av-story-color-panel').remove();
+          self.showColorSettings();
+        });
+        $('#av-clean-new-tag').on('keydown', function(e) {
+          if (e.key === 'Enter') { e.preventDefault(); $('#av-clean-add-tag').click(); }
+        });
+        $('#av-story-color-panel').on('click', '.av-clean-tag', function() {
+          var tag = $(this).data('tag');
+          _removeCustomCleanTag(tag);
+          $('#av-story-color-panel').remove();
+          self.showColorSettings();
+        });
+
         $('#av-snow-add-format').on('click', function() {
           var tag = $('#av-snow-new-format').val().trim();
           if (!tag) return;
@@ -7120,7 +7379,16 @@ function _wirePhone() {
         var $body = $('#av-story-hist-body');
         $body.scrollTop($body[0].scrollHeight);
 
-        $('#av-story-hist-close').on('click', function() { $('#av-story-hist-panel').remove(); });
+        $('#av-story-hist-close').on('click', function(e) { e.stopPropagation(); $('#av-story-hist-panel').remove(); });
+        $('#av-story-hist-panel').on('click', function(e) {
+          if (e.target === this) { $(this).remove(); }
+        });
+        /* ═══ ESC 键也能关闭 ═══ */
+        $(document).off('keydown.avHistClose').on('keydown.avHistClose', function(e) {
+          if (e.key === 'Escape' && $('#av-story-hist-panel').length) {
+            $('#av-story-hist-panel').remove();
+          }
+        });
 
         /* ═══ 折叠箭头旋转 ═══ */
         $('#av-story-hist-panel').on('toggle', '.av-hist-floor', function() {
@@ -7151,7 +7419,7 @@ function _wirePhone() {
 
       rebuildHistoryFromChat: function() {
         try {
-          var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+          var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
           if (!context || !context.chat) return;
           var chat = context.chat;
           var rebuilt = [];
@@ -7178,7 +7446,7 @@ function _wirePhone() {
           if (!_visible) return;
           if (this.state.active && !this.state.waiting) return;
 
-          var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+          var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
           if (!context || !context.chat || !context.chat.length) return;
 
           var chat = context.chat;
@@ -7279,7 +7547,7 @@ function _wirePhone() {
     $('#av-scene-go-scripts').on('click', function() { _screen = 'scripts'; _render(); });
     $('#av-scene-reopen').on('click', function() {
       try {
-        var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+        var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
         if (!context || !context.chat || !context.chat.length) {
           if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天记录');
           return;
@@ -7356,7 +7624,7 @@ function _wirePhone() {
 
 $('#av-scene-reopen').on('click', function() {
   try {
-    var context = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
+    var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
     if (!context || !context.chat || !context.chat.length) {
       if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天记录');
       return;
@@ -7391,7 +7659,7 @@ $('#av-scene-reopen').on('click', function() {
           _setCurScr(null);
           if (typeof triggerSlash === 'function') {
             triggerSlash('/setentryfield file="' + SCRIPT_WB_NAME + '" uid=' + SCRIPT_WB_UID + ' field=content （空）');
-            triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5 | /trigger');
+            triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"AV"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
           }
           _screen = 'scripts'; _render();
         });
@@ -9901,6 +10169,13 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       _refreshFans();
       var t = _t();
       var o = '<div style="display:flex;flex-direction:column;height:100%;background:#ededed">';
+      /* ═══ 顶部返回主页栏 ═══ */
+      o += '<div id="av-comm-home-btn" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f7f7f7;border-bottom:1px solid #e0e0e0;flex-shrink:0;cursor:pointer;transition:background .15s">';
+      o += '<span style="font-size:22px;color:#07c160;line-height:1;font-weight:600">‹</span>';
+      o += '<span style="font-size:14px;color:#333;font-weight:500">返回主页</span>';
+      o += '<span style="flex:1"></span>';
+      o += '<span style="font-size:11px;color:#999">💬 通讯</span>';
+      o += '</div>';
 
       var fanData = _loadFanMsgs();
       var fanCount = Object.keys(fanData).length;
@@ -9955,6 +10230,12 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       o += '</div>';
 
       $c.html(o);
+
+      /* ═══ 返回主页按钮（与底部横条逻辑一致） ═══ */
+      $c.find('#av-comm-home-btn').on('click', function() {
+        if (_screen === 'comm') { _flushNewSms(); }
+        if (_screen !== 'home') { _screen = 'home'; _render(); }
+      });
 
       /* Tab事件 */
       $c.find('.av-comm-tab').on('click', function() {
@@ -14797,7 +15078,7 @@ function _drawScriptMarket($c) {
               var _roleNote = '（角色：' + (curScr.role || '女主') + '）';
               triggerSlash('/send 拍摄结束，我下本了。剧本：「' + curScr.title + '」' + _roleNote + '，标签：' + curScr.tags.join('、') + '，搭戏艺人：' + curScr.actors.join('、') + '。请结算报酬' + curScr.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档）。【短视频结算】人气涨得快、名气涨得慢。女主：人气+多、名气+中；女配：报酬-30%、人气+中、名气+少；炮灰：报酬-60%、人气+少、名气+极少。如果是靠关系拿的女主，人气+多但名气+少、八卦值+多 | /trigger');
             } else {
-              triggerSlash('/send 拍摄结束，我下本了。剧本：「' + curScr.title + '」，标签：' + curScr.tags.join('、') + '，合作艺人：' + curScr.actors.join('、') + '。请结算报酬' + curScr.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5 | /trigger');
+              triggerSlash('/send 拍摄结束，我下本了。剧本：「' + curScr.title + '」，标签：' + curScr.tags.join('、') + '，合作艺人：' + curScr.actors.join('、') + '。请结算报酬' + curScr.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填\"AV\"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
             }
           }
           _drawScripts($c);
@@ -18667,7 +18948,7 @@ function _renderWeiboContent(text) {
           if (pType === 'gossip' || pType === 'media') likes = Math.floor(likes * 2.5);
 
           newPosts.push({
-            id: 'wb_' + Date.now().toString(36) + '_' + bi,
+            id: 'wb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6) + '_' + bi,
             author: pAuthor,
             authorIcon: acctInfo.icon,
             authorColor: acctInfo.color,
@@ -18760,6 +19041,10 @@ function _renderWeiboContent(text) {
       _pushResult = _doWeiboPush(_relId, acct, week);
     }
 
+    /* ═══ 发帖时按人气给个基础点赞 ═══ */
+    var _pop = _v('user.人气', 0);
+    var _baseLikes = Math.floor(_pop * (0.5 + Math.random()) ) + Math.floor(Math.random() * 8);
+    if (_baseLikes < 1) _baseLikes = Math.floor(Math.random() * 3) + 1;
     var newPost = {
       id: 'wb_u_' + Date.now().toString(36),
       author: acct.name,
@@ -18768,7 +19053,7 @@ function _renderWeiboContent(text) {
       authorTag: acct.isMain ? '认证' : '',
       authorType: 'self',
       content: text,
-      likes: 0,
+      likes: _baseLikes,
       comments: [],
       reposts: 0,
       time: '刚刚',
@@ -18863,6 +19148,8 @@ function _renderWeiboContent(text) {
           }
         }
 
+        /* ═══ 每条评论顺便带 1~3 个赞 ═══ */
+        posts[postIdx].likes = (posts[postIdx].likes || 0) + added * (1 + Math.floor(Math.random() * 3));
         if (added > 0) {
           _saveWeiboPosts(posts);
           if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 收到 ' + added + ' 条评论');
@@ -19108,10 +19395,8 @@ function _renderWeiboContent(text) {
       var tab = $(this).data('tab');
       if (tab === 'trending') { _weiboTab = 'feed'; _weiboFeedTab = 'recommend'; }
       else { _weiboTab = tab; }
-      /* ═══ 点进消息 tab：清空通知（红点消失） ═══ */
-      if (tab === 'notify') {
-        _saveWeiboNotifs([]);
-      }
+      /* ═══ 点进消息 tab：不清空，让玩家点通知跳转；红点保留直到点\"清除\" ═══ */
+      /* （原逻辑：进入即清空，导致列表为空） */
       _weiboPostDetail = null;
       _weiboTopicFilter = '';
       _weiboUserFilter = '';
@@ -19156,6 +19441,32 @@ function _renderWeiboContent(text) {
     });
 
     /* ═══ 关注/取关按钮 ═══ */
+    /* ═══ 点击微博通知 → 跳到对应帖子 ═══ */
+    $c.find('.av-wb-notif-item').on('click', function(e) {
+      e.stopPropagation();
+      var pid = $(this).data('postid');
+      if (!pid) return;
+      var ps = _loadWeiboPosts();
+      var found = ps.find(function(p) { return p.id === pid; });
+      if (!found) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 这条帖子已经不存在了');
+        return;
+      }
+      _weiboTab = 'feed';
+      _weiboFeedTab = 'recommend';
+      _weiboTopicFilter = '';
+      _weiboUserFilter = '';
+      _weiboPostDetail = pid;
+      _drawWeibo($c);
+    });
+
+    /* ═══ 清除通知按钮 ═══ */
+    $c.find('#av-wb-notif-clear').on('click', function(e) {
+      e.stopPropagation();
+      _saveWeiboNotifs([]);
+      _drawWeibo($c);
+    });
+
     $c.find('.av-wb-follow-btn').on('click', function(e) {
       e.stopPropagation();
       var name = $(this).data('name');
@@ -19799,10 +20110,12 @@ o += '<div style="width:48px;height:48px;border-radius:50%;flex-shrink:0;' + (_w
       o += '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="av-dlg-btn av-dlg-cancel" id="av-wb-notif-clear" style="font-size:8px;padding:3px 10px">清除</button></div>';
       for (var i = 0; i < notifs.length; i++) {
         var n = notifs[i];
-        o += '<div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid ' + t.divider + '">';
-        o += '<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;background:#5080c022;color:#5080c0">' + _esc(n.from.substring(0, 1)) + '</div>';
-        o += '<div style="flex:1;min-width:0"><div style="font-size:10px;color:' + t.text + '"><span style="font-weight:500">' + _esc(n.from) + '</span> <span style="color:' + t.textMuted + '">评论了你</span></div>';
-        o += '<div style="font-size:8px;color:' + t.textMuted + ';margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(n.preview || '') + '</div></div></div>';
+        var _typeLabel = n.type === 'reply' ? '回复了你' : '评论了你';
+        o += '<div class="av-wb-notif-item" data-postid="' + _esc(n.postId || '') + '" style="display:flex;align-items:center;gap:8px;padding:10px 8px;border-bottom:1px solid ' + t.divider + ';cursor:pointer;transition:background .15s">';
+        o += '<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;background:#5080c022;color:#5080c0">' + _esc(n.from.substring(0, 1)) + '</div>';
+        o += '<div style="flex:1;min-width:0"><div style="font-size:10px;color:' + t.text + '"><span style="font-weight:500">' + _esc(n.from) + '</span> <span style="color:' + t.textMuted + '">' + _typeLabel + '</span></div>';
+        o += '<div style="font-size:8px;color:' + t.textMuted + ';margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(n.preview || '') + '</div></div>';
+        o += '<div style="font-size:14px;color:' + t.textMuted + ';flex-shrink:0">›</div></div>';
       }
     } else { o += '<div class="av-nil">暂无消息</div>'; }
     return o;
@@ -20145,6 +20458,7 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
         { id: 'actorAvatars', label: '艺人自定义头像', group: '数据' },
         { id: 'playerPortrait', label: '玩家立绘', group: '数据' },
         { id: 'storyColors', label: '剧情颜色设置', group: '数据' },
+        { id: 'customCleanTags', label: '自定义清洗标签', group: '数据' },
         { id: 'lyricTrans', label: '歌词翻译缓存', group: '数据' }
       ];
       var groups = ['美化', '系统', '数据'];
@@ -20221,6 +20535,7 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
               case 'actorAvatars': ALL_ACTORS.forEach(function(a) { _clearActorAvatar(a); }); count++; break;
               case 'playerPortrait': try { localStorage.removeItem(PLAYER_PORTRAIT_KEY); localStorage.removeItem(PLAYER_PORTRAIT_CUSTOM_KEY); } catch(e) {} count++; break;
               case 'storyColors': if (typeof ScenePlayer !== 'undefined') localStorage.removeItem(ScenePlayer.COLOR_KEY); count++; break;
+              case 'customCleanTags': localStorage.removeItem('av-custom-clean-tags'); count++; break;
               case 'lyricTrans': localStorage.removeItem(LYRIC_TRANS_CACHE_KEY); count++; break;
             }
           }
@@ -20494,8 +20809,10 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
             /* ── 脚本自己的标签（应在外层处理）── */
             /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
             /* ── 你自己遇到的额外标签，往这里加 ── */
-            'gossip'
+            'gossip',
+            'electric'
           ];
+          SYS_TAGS = _getAllSystemTags(SYS_TAGS);
           for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
             var tag = SYS_TAGS[_ti];
             /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
@@ -20834,6 +21151,8 @@ function _clearGameData() {
     'av-affair-film-state',
     /* 塔罗扩展 */
     'av-tarot-history',
+    /* 自定义清洗标签 */
+    'av-custom-clean-tags',
     /* 地图记忆 */
     'av-map-cur-key',
     'av-map-last-home'
@@ -25387,6 +25706,142 @@ function _clearGameData() {
       triggerSlash('/echo severity=info 你回避了' + name + '的结婚提议，' + name + '不再提起这件事。');
     }
   }
+
+/* ═══════════════════════════════════════════════
+   🩹 兜底补丁：修复顶部按钮失效 + getContext 报错
+   ─────────────────────────────────────────────
+   原理：
+   1. 用「捕获阶段」的 addEventListener 直接监听，
+      不走 jQuery 委托，绕开所有 off() 误伤。
+   2. 内部自己判断 getContext 是否存在，绝不裸调。
+   ═══════════════════════════════════════════════ */
+(function _installFixPatch() {
+  /* 只装一次 */
+  if (window._avFixPatchInstalled) return;
+  window._avFixPatchInstalled = true;
+
+  /* 安全获取 context（永不抛错） */
+  function _safeCtx() {
+    try {
+      if (typeof SillyTavern === 'undefined') return null;
+      if (!SillyTavern || typeof SillyTavern.getContext !== 'function') return null;
+      return SillyTavern.getContext();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* 用捕获阶段监听，任何 stopPropagation 都拦不住 */
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    if (!el) return;
+
+    /* 向上找，最多 5 层，兼容点到子元素的情况 */
+    var target = null;
+    for (var i = 0; i < 5 && el; i++) {
+      if (el.id === 'av-size-btn' || el.id === 'av-reopen-btn' || el.id === 'av-close-btn') {
+        target = el;
+        break;
+      }
+      el = el.parentNode;
+    }
+    if (!target) return;
+
+    /* 阻止 jQuery 委托层的重复触发 */
+    e.stopPropagation();
+    e.preventDefault();
+
+    var id = target.id;
+    console.log('[AV兜底] 点击了', id);
+
+    /* ── ✕ 关闭手机 ── */
+    if (id === 'av-close-btn') {
+      try {
+        if (typeof _screen !== 'undefined' && _screen === 'comm' && typeof _flushNewSms === 'function') {
+          _flushNewSms();
+        }
+        if (typeof _toggle === 'function') _toggle();
+      } catch (err) {
+        console.error('[AV兜底] 关闭失败:', err);
+      }
+      return;
+    }
+
+    /* ── ▣ 切换尺寸 ── */
+    if (id === 'av-size-btn') {
+      try {
+        var _isFs = localStorage.getItem('av-fullscreen') !== '0';
+        _isFs = !_isFs;
+        localStorage.setItem('av-fullscreen', _isFs ? '1' : '0');
+        if (typeof window._applySize === 'function') {
+          window._applySize();
+        } else if (typeof _t === 'function' && typeof G !== 'undefined') {
+          /* 手动设置样式兜底 */
+          var $o = $('#' + G.elIds.overlay);
+          if (_isFs) {
+            $o.css({ top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100dvh', maxWidth: 'none', maxHeight: 'none', borderRadius: 0, border: 'none', margin: '0' });
+          } else {
+            $o.css({ top: '50px', left: 'auto', right: '20px', bottom: 'auto', width: '370px', height: '740px', maxWidth: '95vw', maxHeight: '90vh', borderRadius: '34px', border: '4px solid ' + _t().bezel, margin: '0' });
+          }
+        }
+        if (typeof triggerSlash === 'function') {
+          triggerSlash('/echo severity=info 尺寸：' + (_isFs ? '全屏' : '小窗'));
+        }
+      } catch (err) {
+        console.error('[AV兜底] 切换尺寸失败:', err);
+      }
+      return;
+    }
+
+    /* ── 📖 重开剧情 ── */
+    if (id === 'av-reopen-btn') {
+      console.log('[AV兜底] 开始执行重开剧情');
+      try {
+        var ctx = _safeCtx();
+        if (!ctx) {
+          console.error('[AV兜底] SillyTavern.getContext 不可用');
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天上下文');
+          return;
+        }
+        if (!ctx.chat || !ctx.chat.length) {
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到聊天记录');
+          return;
+        }
+        var lastAiMsg = null;
+        for (var mi = ctx.chat.length - 1; mi >= 0; mi--) {
+          if (!ctx.chat[mi].is_user) { lastAiMsg = ctx.chat[mi]; break; }
+        }
+        if (!lastAiMsg || !lastAiMsg.mes) {
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有找到AI回复');
+          return;
+        }
+        if (typeof ScenePlayer === 'undefined') {
+          console.error('[AV兜底] ScenePlayer 未定义');
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error ScenePlayer 未加载');
+          return;
+        }
+        var segments = ScenePlayer.parse(lastAiMsg.mes);
+        if (segments && segments.length) {
+          ScenePlayer.state.lastMsgId = -1;
+          ScenePlayer.show(segments);
+          console.log('[AV兜底] 剧情阅读器已打开，共 ' + segments.length + ' 段');
+        } else {
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 最近的AI回复中没有可解析的剧情内容');
+        }
+      } catch (err) {
+        /* ⚠️ 关键：打印完整堆栈到 F12，方便定位 */
+        console.error('[AV兜底] 重开剧情失败，完整堆栈:', err);
+        console.error('[AV兜底] err.stack =', err && err.stack);
+        if (typeof triggerSlash === 'function') {
+          triggerSlash('/echo severity=error 打开失败：' + (err && err.message ? err.message : err));
+        }
+      }
+      return;
+    }
+  }, true);   /* true = 捕获阶段，比 jQuery 的委托更早 */
+
+  console.log('[AV兜底] 补丁已安装，三个按钮将走原生捕获监听');
+})();
 
   $(document).ready(_boot);
 })();
