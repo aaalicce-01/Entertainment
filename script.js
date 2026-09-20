@@ -5313,7 +5313,7 @@ function _wirePhone() {
     /* ── 下部APP区域：全部散放 ── */
     o += `<div style="flex:1;padding:2px 8px 12px;overflow-y:auto;min-height:0">`;
     var _scrollMode = localStorage.getItem('av-app-scroll-mode') || 'vertical';
-    o += '<div class="av-app-grid ' + (_scrollMode === 'vertical' ? 'av-scroll-v' : 'av-scroll-h') + '">';
+    o += '<div class="av-app-grid ' + (_scrollMode === 'vertical' ? 'av-scroll-v' : 'av-scroll-h') + '" id="av-home-grid">';
     for (const app of G.apps) {
       const appIconUrl = _getAppIconUrl(app.id);
       const iconInner = appIconUrl
@@ -5327,7 +5327,36 @@ function _wirePhone() {
     o += '</div>'; /* 关闭z-index:1的包裹div */
     o += '</div>';
     $s.html(o);
-    $s.find('.av-app').on('click', function () { _screen = $(this).data('app'); _render(); });
+/* 恢复 app 网格的滚动位置 */
+(function() {
+  try {
+    var top = parseInt(localStorage.getItem('av-home-scroll-top') || '0');
+    var left = parseInt(localStorage.getItem('av-home-scroll-left') || '0');
+    var wrapTop = parseInt(localStorage.getItem('av-home-wrap-scroll-top') || '0');
+    var $grid = $('#av-home-grid');
+    if ($grid.length) {
+      if (top > 0) $grid[0].scrollTop = top;
+      if (left > 0) $grid[0].scrollLeft = left;
+      var $wrap = $grid.parent();
+      if ($wrap.length && wrapTop > 0) $wrap[0].scrollTop = wrapTop;
+    }
+  } catch(e) {}
+})();
+    $s.find('.av-app').on('click', function () {
+  var $grid = $s.find('.av-app-grid');
+  var $wrap = $grid.parent();
+  try {
+    if ($grid.length) {
+      localStorage.setItem('av-home-scroll-top', String($grid[0].scrollTop || 0));
+      localStorage.setItem('av-home-scroll-left', String($grid[0].scrollLeft || 0));
+    }
+    if ($wrap.length) {
+      localStorage.setItem('av-home-wrap-scroll-top', String($wrap[0].scrollTop || 0));
+    }
+  } catch(e) {}
+  _screen = $(this).data('app');
+  _render();
+});
     $s.find('#av-today-sched').on('click', function() {
       _screen = 'schedule'; _render();
     });
@@ -18868,6 +18897,7 @@ function _renderWeiboContent(text) {
     o += '</div>';
 
     $c.html(o);
+    if (window._bindTransButtons) window._bindTransButtons($c);
 
     /* ═══ 事件绑定 ═══ */
     $c.find('.av-weibo-tab').on('click', function() {
@@ -18935,7 +18965,11 @@ function _renderWeiboContent(text) {
     $c.find('#av-wb-refresh').on('click', async function() { $(this).prop('disabled', true).text('加载中...'); await _weiboRefreshAll(); _drawWeibo($c); });
     $c.find('#av-wb-publish').on('click', function() { var tx = $('#av-wb-textarea').val().trim(); if (!tx) { if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请输入内容'); return; } $(this).prop('disabled', true).text('发布中...'); _weiboPublishPost($c, tx); });
     $c.find('.av-wb-like').on('click', function(e) { e.stopPropagation(); var pid = $(this).data('id'); var ps = _loadWeiboPosts(); var pi = ps.findIndex(function(p) { return p.id === pid; }); if (pi >= 0) { ps[pi].likes = (ps[pi].likes || 0) + 1; _saveWeiboPosts(ps); } _drawWeibo($c); });
-    $c.find('.av-wb-card').on('click', function() { _weiboPostDetail = $(this).data('id'); _drawWeibo($c); });
+    $c.find('.av-wb-card').on('click', function(e) {
+  if ($(e.target).closest('.av-trans-btn, .av-trans-box').length) return;
+  _weiboPostDetail = $(this).data('id');
+  _drawWeibo($c);
+});
     $c.find('#av-wb-detail-back').on('click', function() { _weiboPostDetail = null; _drawWeibo($c); });
     $c.find('#av-wb-comment-send').on('click', function() { var tx = $('#av-wb-comment-input').val().trim(); if (!tx) return; $(this).prop('disabled', true).text('...'); _weiboCommentPost($c, _weiboPostDetail, tx); });
     $c.find('#av-wb-comment-input').on('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $c.find('#av-wb-comment-send').click(); } });
@@ -19254,7 +19288,8 @@ function _renderWeiboContent(text) {
       } else if (isSelf) {
         var pAccts = _loadWeiboAccounts();
         var pAcct = (p.acctKey && pAccts[p.acctKey]) || pAccts['main'] || { icon: '👤' };
-        o += '<div style="width:48px;height:48px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;background:' + WB.primary + '18">' + pAcct.icon + '</div>';
+        var _wbFeedAvt = _getHomeAvatar();
+o += '<div style="width:48px;height:48px;border-radius:50%;flex-shrink:0;' + (_wbFeedAvt ? "background-image:url('" + _wbFeedAvt + "');background-size:cover;background-position:center" : 'display:flex;align-items:center;justify-content:center;font-size:24px;background:' + WB.primary + '18') + '">' + (_wbFeedAvt ? '' : pAcct.icon) + '</div>';
       } else {
         o += '<div style="width:48px;height:48px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:' + (p.authorColor || WB.textMuted) + '22">' + (p.authorIcon || '👤') + '</div>';
       }
@@ -19592,7 +19627,8 @@ function _renderWeiboContent(text) {
     /* ═══ 个人主页头部 ═══ */
     o += '<div style="padding:20px 16px;background:linear-gradient(135deg,' + WB.primary + '15,' + WB.primary + '05);border-bottom:1px solid ' + WB.divider + '">';
     o += '<div style="display:flex;align-items:center;gap:14px">';
-    o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:32px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)">' + curAcct.icon + '</div>';
+    var _wbHomeAvt = _getHomeAvatar();
+o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_wbHomeAvt ? "background-image:url('" + _wbHomeAvt + "');background-size:cover;background-position:center" : 'display:flex;align-items:center;justify-content:center;font-size:32px;background:#fff') + ';box-shadow:0 2px 8px rgba(0,0,0,.08)">' + (_wbHomeAvt ? '' : curAcct.icon) + '</div>';
     o += '<div style="flex:1;min-width:0">';
     o += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:18px;font-weight:700;color:' + WB.text + '">' + _esc(curAcct.name) + '</span>';
     if (curAcct.isMain) o += '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:' + WB.vOrange + ';color:#fff;font-size:10px;font-weight:700">V</span>';
