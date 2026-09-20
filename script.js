@@ -5017,22 +5017,10 @@ function _contrastColor(hex){
   /* ═══════════════════════════════════════
      构建手机外壳
      ═══════════════════════════════════════ */
-function _buildShell() {
+  function _buildShell() {
   if ($('#' + G.elIds.trigger).length) return;
-  /* ═══ 用「聊天指纹」判断是否换了聊天 ═══ */
-  try {
-    var ctx = typeof SillyTavern !== 'undefined' ? SillyTavern.getContext() : null;
-    var curChatId = (ctx && (ctx.chatId || (ctx.chat && ctx.chat.length + '_' + (ctx.characters && ctx.characters[ctx.characterId] && ctx.characters[ctx.characterId].name)))) || '';
-    var lastChatId = '';
-    try { lastChatId = localStorage.getItem('av-last-chat-id') || ''; } catch(e) {}
-    if (lastChatId && curChatId && lastChatId !== curChatId) {
-      /* 换了聊天，清数据 */
-      if (typeof _clearGameData === 'function') _clearGameData();
-    }
-    try { localStorage.setItem('av-last-chat-id', curChatId); } catch(e) {}
-  } catch(e) { console.warn('[AV] chat fingerprint fail:', e); }
+  /* ═══ 自动清数据已禁用 ═══ */
   _ensureCss(); _panelPositioned = false;
-
   var html =
     '<div id="' + G.elIds.trigger + '">📱 手机</div>' +
     '<div id="' + G.elIds.overlay + '" style="transform:none">' +
@@ -20950,13 +20938,7 @@ function _clearGameData() {
       $('#' + G.elIds.css).remove();
       _visible = false;
       _screen = 'home';
-
-      /* 第一次触发（脚本加载/刷新页面）不清数据，之后再清 */
-      if (_chatChangeFirstTime) {
-        _chatChangeFirstTime = false;
-      } else {
-        _clearGameData();
-      }
+      /* ═══ 不再自动清数据 ═══ */
       setTimeout(_buildShell, 100);
     }
     /* 监听所有可能触发「聊天切换」的事件 */
