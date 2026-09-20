@@ -10224,9 +10224,10 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       });
 
       /* ═══ 群聊：回车=发消息，发送按钮=触发AI ═══ */
-      $c.find('#av-group-send').on('click', function() {
-        _triggerGroupAi($c);
-      });
+$c.find('#av-group-enter').on('click', function() { _handleGroupSend($c); });
+$c.find('#av-group-send').on('click', function() {
+  _triggerGroupAi($c);
+});
       $c.find('#av-group-input').on('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
@@ -10386,7 +10387,8 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       });
 
       /* 短信发送：回车=只发消息，发送按钮=触发AI */
-      $c.find('#av-sms-send').on('click', function() { _triggerSmsAi($c); });
+      $c.find('#av-sms-enter').on('click', function() { _handleSmsSend($c); });
+$c.find('#av-sms-send').on('click', function() { _triggerSmsAi($c); });
       $c.find('#av-sms-input').on('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _handleSmsSend($c); } });
 
       /* 粉丝列表点击 */
@@ -10573,7 +10575,8 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
     o += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f7f7f7;border-top:1px solid #e0e0e0;flex-shrink:0">';
     o += '<button id="av-group-sticker-btn" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:none;background:transparent;font-size:22px;cursor:pointer;padding:0">😀</button>';
     o += '<textarea id="av-group-input" placeholder="" rows="1" style="flex:1;border:none;background:#ffffff;padding:8px 12px;border-radius:5px;font-size:14px;color:#000;outline:none;resize:none;height:20px;line-height:20px;font-family:inherit;box-sizing:content-box"></textarea>';
-    o += '<button id="av-group-send" title="触发AI回复" style="flex-shrink:0;padding:0 16px;height:36px;border-radius:5px;border:none;background:#07c160;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">💬 回复</button>';
+    o += '<button id="av-group-enter" title="发送消息（不触发AI）" style="flex-shrink:0;padding:0 14px;height:36px;border-radius:5px;border:1px solid #e0e0e0;background:#fff;color:#000;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">📤</button>';
+o += '<button id="av-group-send" title="发送并触发AI回复" style="flex-shrink:0;padding:0 16px;height:36px;border-radius:5px;border:none;background:#07c160;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">💬 回复</button>';
     o += '</div>';
     o += '<div id="av-group-sticker-panel" style="display:none;background:#f7f7f7;border-top:1px solid #e0e0e0;padding:8px;flex-shrink:0"></div>';
 
@@ -11912,7 +11915,8 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
     o += '<button id="av-sms-plus-btn" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:none;background:transparent;font-size:24px;cursor:pointer;padding:0;color:#555">＋</button>';
     o += '<button id="av-sms-sticker-btn" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:none;background:transparent;font-size:22px;cursor:pointer;padding:0">😀</button>';
     o += '<textarea id="av-sms-input" placeholder="" rows="1" style="flex:1;border:none;background:#ffffff;padding:8px 12px;border-radius:5px;font-size:14px;color:' + WX.text + ';outline:none;resize:none;height:20px;line-height:20px;font-family:inherit;box-sizing:content-box"></textarea>';
-    o += '<button id="av-sms-send" title="触发AI回复" style="flex-shrink:0;padding:0 16px;height:36px;border-radius:5px;border:none;background:' + WX.primary + ';color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">💬 回复</button>';
+    o += '<button id="av-sms-enter" title="发送消息（不触发AI）" style="flex-shrink:0;padding:0 14px;height:36px;border-radius:5px;border:1px solid ' + WX.border + ';background:#fff;color:' + WX.text + ';font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">📤</button>';
+o += '<button id="av-sms-send" title="发送并触发AI回复" style="flex-shrink:0;padding:0 16px;height:36px;border-radius:5px;border:none;background:' + WX.primary + ';color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">💬 回复</button>';
     o += '</div>';
 
     /* ═══ 表情包面板 ═══ */
