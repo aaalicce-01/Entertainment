@@ -6102,6 +6102,60 @@ function _wirePhone() {
 
       parse: function(text) {
         if (!text) return [];
+
+        /* ═══════════════════════════════════════════════════════════
+           🧹 通用清洗模块（黑名单式）
+           ─────────────────────────────────────────
+           所有列在 SYS_TAGS 里的标签，连同内容一起删除。
+           支持 <tag>...</tag>、<tag/>、未闭合的 <tag>...（到文本末尾）
+           以后遇到新的元数据标签，往数组里加一条即可。
+           ═══════════════════════════════════════════════════════════ */
+        (function _cleanSystemTags() {
+          var SYS_TAGS = [
+            /* ── AI 思考/内部推理 ── */
+            'COT', 'cot', 'CoT',
+            'think', 'thinking', 'reasoning', 'reason',
+            'analysis', 'Analysis',
+            'scratchpad', 'internal',
+            /* ── 结构/系统标签 ── */
+            'UpdateVariable',
+            'StatusPlaceHolderImpl',
+            'disclaimer',
+            'draft',
+            'meta', 'note', 'commentary', 'annotation',
+            'warning', 'caution', 'notice',
+            /* ── 脚本自己的标签（应在外层处理）── */
+            /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
+            /* ── 你自己遇到的额外标签，往这里加 ── */
+            'gossip'
+          ];
+          for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
+            var tag = SYS_TAGS[_ti];
+            /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?<\\/' + tag + '>', 'gi'),
+              ''
+            );
+            /* 2. 自闭合 <tag/> 或 <tag /> */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?\\/\\s*>', 'gi'),
+              ''
+            );
+            /* 3. 未闭合兜底：从 <tag...> 一直删到文本末尾 */
+            if (new RegExp('<' + tag + '(?:\\s[^>]*)?>', 'i').test(text)) {
+              text = text.replace(
+                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*$', 'gi'),
+                ''
+              );
+            }
+          }
+          /* 4. HTML 注释 <!-- ... --> 也一起清掉 */
+          text = text.replace(/<!--[\s\S]*?-->/g, '');
+          /* 5. ::: 格式块 ::: ... ::: 一起清掉 */
+          text = text.replace(/:::[\s\S]*?:::/g, '');
+        })();
+
+        if (!text) return [];
         text = text.replace(/^[\s\S]*<\/(?:think|thinking)>/i, '').trim();
         text = text.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi, '').trim();
         text = text.replace(/<StatusPlaceHolderImpl\s*\/?>/gi, '').trim();
@@ -20263,7 +20317,61 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
       },
 
       /* 解析AI回复文本为段落数组 */
-      parse(text) {
+      parse: function(text) {
+        if (!text) return [];
+
+        /* ═══════════════════════════════════════════════════════════
+           🧹 通用清洗模块（黑名单式）
+           ─────────────────────────────────────────
+           所有列在 SYS_TAGS 里的标签，连同内容一起删除。
+           支持 <tag>...</tag>、<tag/>、未闭合的 <tag>...（到文本末尾）
+           以后遇到新的元数据标签，往数组里加一条即可。
+           ═══════════════════════════════════════════════════════════ */
+        (function _cleanSystemTags() {
+          var SYS_TAGS = [
+            /* ── AI 思考/内部推理 ── */
+            'COT', 'cot', 'CoT',
+            'think', 'thinking', 'reasoning', 'reason',
+            'analysis', 'Analysis',
+            'scratchpad', 'internal',
+            /* ── 结构/系统标签 ── */
+            'UpdateVariable',
+            'StatusPlaceHolderImpl',
+            'disclaimer',
+            'draft',
+            'meta', 'note', 'commentary', 'annotation',
+            'warning', 'caution', 'notice',
+            /* ── 脚本自己的标签（应在外层处理）── */
+            /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
+            /* ── 你自己遇到的额外标签，往这里加 ── */
+            'gossip'
+          ];
+          for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
+            var tag = SYS_TAGS[_ti];
+            /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?<\\/' + tag + '>', 'gi'),
+              ''
+            );
+            /* 2. 自闭合 <tag/> 或 <tag /> */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?\\/\\s*>', 'gi'),
+              ''
+            );
+            /* 3. 未闭合兜底：从 <tag...> 一直删到文本末尾 */
+            if (new RegExp('<' + tag + '(?:\\s[^>]*)?>', 'i').test(text)) {
+              text = text.replace(
+                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*$', 'gi'),
+                ''
+              );
+            }
+          }
+          /* 4. HTML 注释 <!-- ... --> 也一起清掉 */
+          text = text.replace(/<!--[\s\S]*?-->/g, '');
+          /* 5. ::: 格式块 ::: ... ::: 一起清掉 */
+          text = text.replace(/:::[\s\S]*?:::/g, '');
+        })();
+
         if (!text) return [];
         text = text.replace(/^[\s\S]*<\/(?:think|thinking)>/i, '').trim();
         text = text.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi, '').trim();
