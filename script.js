@@ -7702,12 +7702,21 @@ $('#av-scene-reopen').on('click', function() {
             data[_commFanContact].messages.push({ from: 'fan', text: '[语音]', type: 'voice', voiceText: _v3[1].trim(), voiceDuration: _v3[2] ? parseInt(_v3[2]) : 3, ts: baseTs + _m3 * 800 });
             continue;
           }
-          var _s3 = _msg3.match(/^\[sticker:(\d+)\]$/);
+          var _s3 = _msg3.match(/^\[sticker:([^\]]+)\]$/);
           if (_s3) {
             var _stks3 = _loadStickers();
-            var _si3 = parseInt(_s3[1]);
-            if (_stks3[_si3]) {
-              data[_commFanContact].messages.push({ from: 'fan', text: _stks3[_si3].url, type: 'sticker', ts: baseTs + _m3 * 800 });
+            var _sKey3 = _s3[1].trim();
+            var _sFound3 = null;
+            if (/^\d+$/.test(_sKey3)) {
+              var _si3 = parseInt(_sKey3);
+              if (_stks3[_si3]) _sFound3 = _stks3[_si3];
+            } else {
+              for (var _sji = 0; _sji < _stks3.length; _sji++) {
+                if ((_stks3[_sji].name || '').trim() === _sKey3) { _sFound3 = _stks3[_sji]; break; }
+              }
+            }
+            if (_sFound3) {
+              data[_commFanContact].messages.push({ from: 'fan', text: _sFound3.url, type: 'sticker', ts: baseTs + _m3 * 800 });
               continue;
             }
           }
@@ -7725,12 +7734,26 @@ $('#av-scene-reopen').on('click', function() {
 
     /* ═══ 表情包存储 ═══ */
   var STICKER_KEY = 'av-stickers';
-  function _loadStickers() { try { var r = localStorage.getItem(STICKER_KEY); if (r) return JSON.parse(r); } catch(e) {} return []; }
+  function _loadStickers() {
+    try {
+      var r = localStorage.getItem(STICKER_KEY);
+      if (r) {
+        var arr = JSON.parse(r);
+        /* 兼容旧数据：没有 name 的补一个 */
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && !arr[i].name) arr[i].name = '表情' + (i + 1);
+        }
+        return arr;
+      }
+    } catch(e) {}
+    return [];
+  }
   function _saveStickers(arr) { try { localStorage.setItem(STICKER_KEY, JSON.stringify(arr)); } catch(e) {} }
-  function _addSticker(dataUrl) {
+  function _addSticker(dataUrl, name) {
     var arr = _loadStickers();
-    arr.push({ id: 'stk_' + Date.now().toString(36), url: dataUrl });
-    if (arr.length > 60) arr = arr.slice(-60);
+    arr.push({ id: 'stk_' + Date.now().toString(36), name: (name || '').trim(), url: dataUrl });
+    /* 上限提到 200，因为可能要批量导入 */
+    if (arr.length > 200) arr = arr.slice(-200);
     _saveStickers(arr);
   }
   function _removeSticker(id) {
@@ -7760,6 +7783,89 @@ $('#av-scene-reopen').on('click', function() {
       rd.readAsDataURL(f);
     };
     inp.click();
+  }
+
+  /* ═══ 批量导入表情包弹窗 ═══ */
+  function _showStickerBatchImportDialog(onDone) {
+    var d = '';
+    d += '<div class="av-dlg-h">📋 批量导入表情包</div>';
+    d += '<div class="av-dlg-sub">每行一个，格式：名字：URL</div>';
+    d += '<textarea id="av-stk-batch-text" placeholder="等得花儿都谢了：https://i.postimg.cc/xxx.jpg\n心虚：https://i.postimg.cc/yyy.jpg\n碰瓷：https://i.postimg.cc/zzz.jpg" style="width:100%;height:200px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;outline:none"></textarea>';
+    d += '<div style="display:flex;gap:6px;margin-top:8px">';
+    d += '<button class="av-dlg-btn av-dlg-cancel" id="av-stk-batch-cancel" style="flex:1">取消</button>';
+    d += '<button class="av-dlg-btn av-dlg-ok" id="av-stk-batch-merge" style="flex:1">追加导入</button>';
+    d += '<button class="av-dlg-btn av-dlg-ok" id="av-stk-batch-replace" style="flex:1;background:rgba(250,81,81,.1);border-color:#fa5151;color:#fa5151">覆盖导入</button>';
+    d += '</div>';
+    d += '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">';
+    d += '· 支持中文冒号「：」和英文冒号「:」<br>';
+    d += '· 名字可以留空，会自动命名为「表情N」<br>';
+    d += '· 追加导入 = 保留原有表情；覆盖导入 = 清空后导入';
+    d += '</div>';
+    var w = _dialog(d);
+
+    w.find('#av-stk-batch-cancel').on('click', function() { w.remove(); });
+
+    function doImport(replace) {
+      var text = w.find('#av-stk-batch-text').val() || '';
+      if (!text.trim()) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请粘贴内容');
+        return;
+      }
+      var lines = text.split('\n');
+      var parsed = [];
+      var failCount = 0;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        /* 匹配 名字：URL 或 名字:URL */
+        var m = line.match(/^([^：:]*)[：:]\s*(https?:\/\/\S+)\s*$/);
+        if (m) {
+          var name = m[1].trim();
+          var url = m[2].trim();
+          parsed.push({ name: name, url: url });
+        } else {
+          /* 尝试只匹配 URL（名字留空） */
+          var m2 = line.match(/^(https?:\/\/\S+)\s*$/);
+          if (m2) {
+            parsed.push({ name: '', url: m2[1].trim() });
+          } else {
+            failCount++;
+          }
+        }
+      }
+
+      if (!parsed.length) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有识别到任何有效的表情包行');
+        return;
+      }
+
+      var arr = replace ? [] : _loadStickers();
+      var startIdx = arr.length;
+      for (var j = 0; j < parsed.length; j++) {
+        var p = parsed[j];
+        var autoName = p.name || ('表情' + (startIdx + j + 1));
+        arr.push({
+          id: 'stk_' + Date.now().toString(36) + '_' + j,
+          name: autoName,
+          url: p.url
+        });
+      }
+      if (arr.length > 200) arr = arr.slice(-200);
+      _saveStickers(arr);
+
+      w.remove();
+      if (typeof triggerSlash === 'function') {
+        var msg = '✅ 已导入 ' + parsed.length + ' 个表情包';
+        if (failCount > 0) msg += '（' + failCount + ' 行格式错误已跳过）';
+        triggerSlash('/echo severity=success ' + msg);
+      }
+      if (onDone) onDone();
+    }
+
+    w.find('#av-stk-batch-merge').on('click', function() { doImport(false); });
+    w.find('#av-stk-batch-replace').on('click', function() {
+      showConfirmModal2('覆盖导入会清空现有表情包，确定？', function() { doImport(true); });
+    });
   }
 
   /* ═══ 短信图片导入（压缩到 800px 内） ═══ */
@@ -8585,12 +8691,18 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       sysPrompt += '   例：[msg][location:潮汐湾·海景餐厅][/msg]\n';
       sysPrompt += '   说明：适合约见面、报告位置、约饭的场景\n\n';
 
-      var _stkCount = _loadStickers().length;
-      if (_stkCount > 0) {
+      var _stkList = _loadStickers();
+      if (_stkList.length > 0) {
         sysPrompt += '6. 【表情包】发一个表情包\n';
-        sysPrompt += '   格式：[msg][sticker:序号][/msg]\n';
-        sysPrompt += '   序号 0 到 ' + (_stkCount - 1) + '\n';
-        sysPrompt += '   说明：只在气氛合适时偶尔用\n\n';
+        sysPrompt += '   格式：[msg][sticker:名字][/msg] 或 [msg][sticker:序号][/msg]\n';
+        /* 列出可用表情名字（最多 80 个，避免 prompt 太长） */
+        var _stkNames = [];
+        for (var _si = 0; _si < Math.min(_stkList.length, 80); _si++) {
+          var _sn = _stkList[_si].name || ('表情' + (_si + 1));
+          _stkNames.push(_si + '=' + _sn);
+        }
+        sysPrompt += '   可用表情：' + _stkNames.join('、') + '\n';
+        sysPrompt += '   说明：根据聊天内容选择气氛合适的表情，不要总用同一个\n\n';
       }
 
       sysPrompt += '6.5 【发红包】给玩家发一个红包（会真的给玩家加金币）\n';
@@ -9868,44 +9980,67 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
         if (!$panel.length) return;
         var stickers = _loadStickers();
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-        html += '<span style="font-size:11px;color:#999">表情包（' + stickers.length + '/60）</span>';
+        html += '<span style="font-size:11px;color:#999">表情包（' + stickers.length + '/200）</span>';
+        html += '<div style="display:flex;gap:6px">';
         html += '<span class="av-sticker-add" style="font-size:11px;color:#07c160;cursor:pointer;padding:2px 8px">+ 添加</span>';
+        html += '<span class="av-sticker-batch" style="font-size:11px;color:#5080d0;cursor:pointer;padding:2px 8px">📋 批量</span>';
+        html += '<span class="av-sticker-clear" style="font-size:11px;color:#fa5151;cursor:pointer;padding:2px 8px">🗑 清空</span>';
         html += '</div>';
-        html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;max-height:180px;overflow-y:auto">';
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:220px;overflow-y:auto">';
         for (var i = 0; i < stickers.length; i++) {
           var s = stickers[i];
-          html += '<div style="position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;cursor:pointer;background:#fff">';
-          html += '<img class="av-sticker-pick" data-url="' + _esc(s.url) + '" src="' + s.url + '" style="width:100%;height:100%;object-fit:cover;display:block">';
+          var sName = s.name || ('表情' + (i + 1));
+          html += '<div style="position:relative;border-radius:6px;overflow:hidden;cursor:pointer;background:#fff;border:1px solid #eee">';
+          html += '<div style="aspect-ratio:1;position:relative">';
+          html += '<img class="av-sticker-pick" data-url="' + _esc(s.url) + '" data-name="' + _esc(sName) + '" src="' + s.url + '" style="width:100%;height:100%;object-fit:cover;display:block">';
           html += '<span class="av-sticker-del" data-id="' + _esc(s.id) + '" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;cursor:pointer">×</span>';
+          html += '</div>';
+          /* 名字栏 */
+          html += '<div style="font-size:9px;color:#666;text-align:center;padding:2px 3px;background:#f8f8f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + _esc(sName) + '">' + _esc(sName) + '</div>';
           html += '</div>';
         }
         if (!stickers.length) {
-          html += '<div style="grid-column:span 5;text-align:center;padding:20px;color:#999;font-size:12px">还没有表情包，点「+ 添加」导入</div>';
+          html += '<div style="grid-column:span 4;text-align:center;padding:20px;color:#999;font-size:12px">还没有表情包，点「+ 添加」或「📋 批量」导入</div>';
         }
         html += '</div>';
         $panel.html(html);
 
-        /* 添加表情 */
+        /* 单个添加 */
         $panel.find('.av-sticker-add').on('click', function() {
           _pickSticker(function() {
             _renderStickerPanel(panelId, inputId, sendBtnId);
           });
         });
-        /* 删除表情 */
+        /* 批量导入 */
+        $panel.find('.av-sticker-batch').on('click', function() {
+          _showStickerBatchImportDialog(function() {
+            _renderStickerPanel(panelId, inputId, sendBtnId);
+          });
+        });
+        /* 清空 */
+        $panel.find('.av-sticker-clear').on('click', function() {
+          showConfirmModal2('确定清空所有表情包？', function() {
+            _saveStickers([]);
+            _renderStickerPanel(panelId, inputId, sendBtnId);
+          });
+        });
+        /* 删除单个 */
         $panel.find('.av-sticker-del').on('click', function(e) {
           e.stopPropagation();
           var id = $(this).data('id');
           _removeSticker(id);
           _renderStickerPanel(panelId, inputId, sendBtnId);
         });
-        /* 选中表情 → 直接发送 */
+        /* 选中发送 */
         $panel.find('.av-sticker-pick').on('click', function() {
           var url = $(this).data('url');
-          _sendSticker(url);
+          var name = $(this).data('name') || '';
+          _sendSticker(url, name);
         });
       }
 
-      function _sendSticker(url) {
+      function _sendSticker(url, name) {
         if (!url) return;
         if (_commTab === 'group' && _commGroupId) {
           var g = _getGroup(_commGroupId);
@@ -10740,7 +10875,19 @@ o += '<button id="av-group-send" title="发送并触发AI回复" style="flex-shr
     sysPrompt += '5. 成员之间可以互相接话、调侃、抢话，模拟真人群聊\n';
     sysPrompt += '6. 如果玩家 @ 了某人，优先让那个人回复\n';
     sysPrompt += '7. 消息要短，每条 3-30 字，像真人聊天\n';
-    sysPrompt += '8. 可以发 [voice:内容|秒数] 语音、[sticker:序号] 表情包\n';
+    var _gStkList = _loadStickers();
+    if (_gStkList.length > 0) {
+      var _gStkNames = [];
+      for (var _gsi = 0; _gsi < Math.min(_gStkList.length, 80); _gsi++) {
+        var _gsn = _gStkList[_gsi].name || ('表情' + (_gsi + 1));
+        _gStkNames.push(_gsi + '=' + _gsn);
+      }
+      sysPrompt += '8. 可以发 [voice:内容|秒数] 语音、[sticker:名字] 或 [sticker:序号] 表情包\n';
+      sysPrompt += '   可用表情：' + _gStkNames.join('、') + '\n';
+      sysPrompt += '   说明：根据聊天内容选择气氛合适的表情，不要总用同一个\n';
+    } else {
+      sysPrompt += '8. 可以发 [voice:内容|秒数] 语音\n';
+    }
     sysPrompt += '⚠️ 再次强调：绝对不能出现群成员列表以外的人的名字！\n\n';
 
     sysPrompt += '【输出格式】\n';
@@ -10931,13 +11078,24 @@ o += '<button id="av-group-send" title="发送并触发AI回复" style="flex-shr
       return true;
     }
 
-    /* 表情包 [sticker:序号] */
-    var sm = trimmed.match(/^\[sticker:(\d+)\]$/);
+    /* 表情包 [sticker:序号] 或 [sticker:名字] */
+    var sm = trimmed.match(/^\[sticker:([^\]]+)\]$/);
     if (sm) {
       var stks = _loadStickers();
-      var sIdx = parseInt(sm[1]);
-      if (stks[sIdx]) {
-        groupData.messages.push({ from: senderName, text: stks[sIdx].url, type: 'sticker', ts: ts });
+      var sKey = sm[1].trim();
+      var sFound = null;
+      if (/^\d+$/.test(sKey)) {
+        /* 按序号 */
+        var sIdx = parseInt(sKey);
+        if (stks[sIdx]) sFound = stks[sIdx];
+      } else {
+        /* 按名字 */
+        for (var _si = 0; _si < stks.length; _si++) {
+          if ((stks[_si].name || '').trim() === sKey) { sFound = stks[_si]; break; }
+        }
+      }
+      if (sFound) {
+        groupData.messages.push({ from: senderName, text: sFound.url, type: 'sticker', ts: ts });
         return true;
       }
     }
@@ -12179,13 +12337,22 @@ o += '<button id="av-sms-send" title="发送并触发AI回复" style="flex-shrin
       return true;
     }
 
-    /* 5. 表情包 [sticker:序号] */
-    var sm = trimmed.match(/^\[sticker:(\d+)\]$/);
+    /* 5. 表情包 [sticker:序号] 或 [sticker:名字] */
+    var sm = trimmed.match(/^\[sticker:([^\]]+)\]$/);
     if (sm) {
       var stks = _loadStickers();
-      var sIdx = parseInt(sm[1]);
-      if (stks[sIdx]) {
-        data[contact].push({ from: contact, text: stks[sIdx].url, type: 'sticker', ts: ts });
+      var sKey = sm[1].trim();
+      var sFound = null;
+      if (/^\d+$/.test(sKey)) {
+        var sIdx = parseInt(sKey);
+        if (stks[sIdx]) sFound = stks[sIdx];
+      } else {
+        for (var _si2 = 0; _si2 < stks.length; _si2++) {
+          if ((stks[_si2].name || '').trim() === sKey) { sFound = stks[_si2]; break; }
+        }
+      }
+      if (sFound) {
+        data[contact].push({ from: contact, text: sFound.url, type: 'sticker', ts: ts });
         _incSmsUnread(contact);
         return true;
       }
