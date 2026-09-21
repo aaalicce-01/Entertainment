@@ -6708,34 +6708,11 @@ function _wirePhone() {
                 ts: Date.now(),
                 read: false
               });
-            }
-            _saveSnowStories(_allSnow);
-              var _st = _snowResult.stories[_si];
-              var _stTitle = _st.title || ('第' + _curWeek + '周小剧场' + (_allSnow[_weekKey].length + 1));
-              /* ═══ 去重：按 content 前80字 + title 判断是否已存在 ═══ */
-              var _stFingerprint = (_stTitle + '|' + (_st.content || '').substring(0, 80)).replace(/\s/g, '');
-              var _stDup = false;
-              for (var _di = 0; _di < _allSnow[_weekKey].length; _di++) {
-                var _exist = _allSnow[_weekKey][_di];
-                var _existFp = ((_exist.title || '') + '|' + (_exist.content || '').substring(0, 80)).replace(/\s/g, '');
-                if (_existFp === _stFingerprint) { _stDup = true; _exist.ts = Date.now(); break; }
-              }
-              if (_stDup) continue;
-              _allSnow[_weekKey].push({
-                id: 'snow_' + Date.now().toString(36) + '_' + _si,
-                title: _stTitle,
-                content: _st.content,
-                isHtml: !!_st.isHtml,
-                week: _curWeek,
-                ts: Date.now(),
-                read: false
-              });
-            }
-            _saveSnowStories(_allSnow);
-          }
-        } catch(e) { console.warn('[Snow] 抓取失败:', e); }
+    }
+  }
+} catch(e) { console.warn('[Snow] 抓取失败:', e); }
 
-        /* ═══ 再提取 <content> ═══ */
+/* ═══ 再提取 <content> ═══ */
         var contentMatch = text.match(/<content>([\s\S]*?)<\/content>/i);
         if (contentMatch) { text = contentMatch[1].trim(); }
         else { text = text.replace(/<\/?content>/gi, '').trim(); }
