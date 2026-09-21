@@ -20291,6 +20291,17 @@ function _renderWeiboContent(text) {
     $c.find('#av-wb-refresh').on('click', async function() { $(this).prop('disabled', true).text('加载中...'); await _weiboRefreshAll(); _drawWeibo($c); });
     $c.find('#av-wb-publish').on('click', function() { var tx = $('#av-wb-textarea').val().trim(); if (!tx) { if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请输入内容'); return; } $(this).prop('disabled', true).text('发布中...'); _weiboPublishPost($c, tx); });
     $c.find('.av-wb-like').on('click', function(e) { e.stopPropagation(); var pid = $(this).data('id'); var ps = _loadWeiboPosts(); var pi = ps.findIndex(function(p) { return p.id === pid; }); if (pi >= 0) { ps[pi].likes = (ps[pi].likes || 0) + 1; _saveWeiboPosts(ps); } _drawWeibo($c); });
+    $c.find('.av-wb-delete').on('click', function(e) {
+      e.stopPropagation();
+      var pid = $(this).data('id');
+      showConfirmModal2('确定删除这条微博？', function() {
+        var ps = _loadWeiboPosts().filter(function(p) { return p.id !== pid; });
+        _saveWeiboPosts(ps);
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 微博已删除');
+        if (_weiboPostDetail === pid) _weiboPostDetail = null;
+        _drawWeibo($c);
+      });
+    });
     $c.find('.av-wb-card').on('click', function(e) {
   if ($(e.target).closest('.av-trans-btn, .av-trans-box').length) return;
   _weiboPostDetail = $(this).data('id');
@@ -21229,7 +21240,6 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
     $c.find('.av-theme-row').on('click', function () { const k = $(this).data('theme'); if (k !== _currentTheme) { _applyTheme(k); if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 主题已切换为「' + THEMES[k].name + '」'); } });
     $c.find('#av-wp-pick').on('click', () => { _pickImage('wallpaper', 800, 1200, () => { if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 壁纸已更新'); _render(); }); });
     $c.find('#av-wp-clear').on('click', () => { _clearImg('wallpaper'); _render(); });
-        $c.find('#av-wp-clear').on('click', () => { _clearImg('wallpaper'); _render(); });
 
     /* ═══ 备份按钮 ═══ */
     $c.find('#av-backup-export').on('click', function() {
@@ -21242,36 +21252,67 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
     /* 重置弹窗事件 */
     $c.find('#av-reset-open').on('click', function() {
       var t2 = _t();
-      var resetItems = [
-        { id: 'wallpaper', label: '壁纸', group: '美化' },
-        { id: 'avatar', label: '主页头像', group: '美化' },
-        { id: 'homeRight', label: '右侧图片', group: '美化' },
-        { id: 'playerColor', label: '播放器颜色', group: '美化' },
-        { id: 'iconPack', label: '图标包', group: '美化' },
-        { id: 'customFont', label: '自定义字体', group: '美化' },
-        { id: 'theme', label: '主题设置', group: '系统' },
-        { id: 'fontSettings', label: '字体设置', group: '系统' },
-        { id: 'apis', label: 'API接口', group: '系统' },
-        { id: 'sms', label: '短信记录', group: '数据' },
-        { id: 'friends', label: '好友列表', group: '数据' },
-        { id: 'fanMsgs', label: '粉丝私信', group: '数据' },
-        { id: 'weibo', label: '微博数据', group: '数据' },
-        { id: 'saves', label: '存档数据', group: '数据' },
-        { id: 'scripts', label: '剧本缓存', group: '数据' },
-        { id: 'filmScripts', label: '影视项目缓存', group: '数据' },
-        { id: 'pendingAudition', label: '待结算试镜', group: '数据' },
-        { id: 'castingFavor', label: '选角导演好感', group: '数据' },
-        { id: 'releases', label: '影视播出记录', group: '数据' },
-        { id: 'awards', label: '获奖记录', group: '数据' },
-        { id: 'music', label: '音乐缓存/历史/收藏', group: '数据' },
-        { id: 'news', label: '报纸缓存', group: '数据' },
-        { id: 'storyHistory', label: '剧情历史', group: '数据' },
-        { id: 'actorAvatars', label: '艺人自定义头像', group: '数据' },
-        { id: 'playerPortrait', label: '玩家立绘', group: '数据' },
-        { id: 'storyColors', label: '剧情颜色设置', group: '数据' },
-        { id: 'customCleanTags', label: '自定义清洗标签', group: '数据' },
-        { id: 'lyricTrans', label: '歌词翻译缓存', group: '数据' }
-      ];
+var resetItems = [
+  /* ═══════════════════════════════════════
+     🎨 美化（不影响游戏数据）
+     ═══════════════════════════════════════ */
+  { id: 'wallpaper', label: '🖼️ 壁纸', group: '🎨 美化', app: '主题' },
+  { id: 'avatar', label: '👤 主页头像', group: '🎨 美化', app: '主题' },
+  { id: 'homeRight', label: '🖼️ 主页右侧图片', group: '🎨 美化', app: '主题' },
+  { id: 'playerPortrait', label: '🧑‍🎤 玩家立绘', group: '🎨 美化', app: '主题' },
+  { id: 'playerColor', label: '🎵 播放器颜色', group: '🎨 美化', app: '主题' },
+  { id: 'iconPack', label: '🎯 图标包', group: '🎨 美化', app: '主题' },
+  { id: 'customFont', label: '🔤 自定义字体', group: '🎨 美化', app: '主题' },
+  { id: 'theme', label: '🌈 主题设置', group: '🎨 美化', app: '主题' },
+  { id: 'fontSettings', label: '🔤 字体设置', group: '🎨 美化', app: '主题' },
+  { id: 'storyColors', label: '🎨 剧情颜色设置', group: '🎨 美化', app: '剧情阅读器' },
+
+  /* ═══════════════════════════════════════
+     🔌 系统
+     ═══════════════════════════════════════ */
+  { id: 'apis', label: '🔌 API 接口', group: '🔌 系统', app: 'API' },
+  { id: 'customCleanTags', label: '🧹 自定义清洗标签', group: '🔌 系统', app: '剧情阅读器' },
+  { id: 'lyricTrans', label: '🌐 歌词翻译缓存', group: '🔌 系统', app: 'API' },
+
+  /* ═══════════════════════════════════════
+     💬 通讯
+     ═══════════════════════════════════════ */
+  { id: 'sms', label: '💬 短信记录', group: '💬 通讯', app: '通讯' },
+  { id: 'friends', label: '📇 好友列表', group: '💬 通讯', app: '通讯·通讯录' },
+  { id: 'fanMsgs', label: '💌 粉丝私信', group: '💬 通讯', app: '通讯·粉丝' },
+
+  /* ═══════════════════════════════════════
+     📱 微博
+     ═══════════════════════════════════════ */
+  { id: 'weibo', label: '📱 微博全部数据（帖子/热搜/小号/通知）', group: '📱 微博', app: '微博' },
+
+  /* ═══════════════════════════════════════
+     📋 工作 / 接本
+     ═══════════════════════════════════════ */
+  { id: 'scripts', label: '🎬 AV 剧本缓存', group: '📋 工作', app: '工作·剧本市场' },
+  { id: 'filmScripts', label: '🎞️ 影视项目缓存', group: '📋 工作', app: '工作·剧本市场' },
+  { id: 'pendingAudition', label: '📝 待结算试镜', group: '📋 工作', app: '工作·剧本市场' },
+  { id: 'castingFavor', label: '🎬 选角导演好感', group: '📋 工作', app: '工作·剧本市场' },
+  { id: 'releases', label: '📺 播出记录', group: '📋 工作', app: '工作 / 作品库' },
+  { id: 'awards', label: '🏆 获奖记录', group: '📋 工作', app: '作品库' },
+  { id: 'storyHistory', label: '📜 剧情历史', group: '📋 工作', app: '剧情阅读器' },
+  { id: 'snowStories', label: '📖 小剧场', group: '📋 工作', app: '剧情阅读器' },
+
+  /* ═══════════════════════════════════════
+     💾 数据
+     ═══════════════════════════════════════ */
+  { id: 'saves', label: '💾 存档', group: '💾 数据', app: '（无）' },
+  { id: 'storyColorsAll', label: '🎨 全部颜色设置', group: '💾 数据', app: '剧情阅读器' },
+  { id: 'music', label: '🎵 音乐缓存/历史/收藏', group: '💾 数据', app: '主页播放器' },
+  { id: 'news', label: '📰 报纸缓存', group: '💾 数据', app: '报纸' },
+  { id: 'actorAvatars', label: '👥 艺人自定义头像', group: '💾 数据', app: '艺人 / 主题' },
+  { id: 'billHistory', label: '💰 支出历史', group: '💾 数据', app: '（无）' },
+  { id: 'rankNpc', label: '📊 榜单 NPC 缓存', group: '💾 数据', app: '榜单' },
+  { id: 'varietyLocal', label: '📺 综艺通告缓存', group: '💾 数据', app: '综艺' },
+  { id: 'achievements', label: '🏅 成就记录', group: '💾 数据', app: '作品库·成就' },
+  { id: 'eventsAll', label: '📨 所有事件通知记录', group: '💾 数据', app: '（狗仔/黑料/官宣等）' },
+  { id: 'storyRelations', label: '💕 全部关系数据', group: '💾 数据', app: '艺人·关系网（告白/求婚/结婚/吃醋/纪念日）' }
+];
       var groups = ['美化', '系统', '数据'];
       var d = '<div class="av-dlg-h">🗑️ 选择要重置的内容</div>';
       d += '<div class="av-dlg-sub">勾选后点击确认，仅清除选中项</div>';
@@ -21281,15 +21322,21 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
       d += '<span id="av-rst-none" style="font-size:8px;color:' + t2.textMuted + ';cursor:pointer;padding:2px 8px;border-radius:6px;border:1px solid ' + t2.border + '">全不选</span>';
       d += '</div>';
       d += '<div style="max-height:300px;overflow-y:auto">';
+var groups = ['🎨 美化', '🔌 系统', '💬 通讯', '📱 微博', '📋 工作', '💾 数据'];
       for (var gi = 0; gi < groups.length; gi++) {
         var gn = groups[gi];
         var gItems = resetItems.filter(function(ri) { return ri.group === gn; });
-        d += '<div style="font-size:8px;color:' + t2.textMuted + ';letter-spacing:1px;margin:' + (gi > 0 ? '10px' : '0') + ' 0 4px;padding-bottom:3px;border-bottom:1px solid ' + t2.divider + '">' + _esc(gn) + '</div>';
+        if (!gItems.length) continue;
+        d += '<div style="font-size:9px;color:' + t2.textMuted + ';letter-spacing:1px;margin:' + (gi > 0 ? '12px' : '0') + ' 0 6px;padding-bottom:4px;border-bottom:1px solid ' + t2.divider + '">' + _esc(gn) + '</div>';
         for (var ii = 0; ii < gItems.length; ii++) {
           var item = gItems[ii];
+          /* 每一行：复选框 + 标签 + 所属APP灰字 */
           d += '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:8px;transition:background .15s" onmouseover="this.style.background=\'' + t2.surfaceHover + '\'" onmouseout="this.style.background=\'transparent\'">';
           d += '<input type="checkbox" class="av-rst-cb" data-id="' + item.id + '" style="width:16px;height:16px;accent-color:' + t2.primary + ';cursor:pointer;flex-shrink:0">';
-          d += '<span style="font-size:10px;color:' + t2.text + '">' + _esc(item.label) + '</span>';
+          d += '<span style="font-size:10px;color:' + t2.text + ';flex:1">' + _esc(item.label) + '</span>';
+          if (item.app) {
+            d += '<span style="font-size:8px;color:' + t2.textMuted + '">' + _esc(item.app) + '</span>';
+          }
           d += '</label>';
         }
       }
@@ -21308,48 +21355,137 @@ o += '<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;' + (_w
           var count = 0;
           for (var si = 0; si < selected.length; si++) {
             var sid = selected[si];
-            switch(sid) {
+switch(sid) {
+              /* ═══ 🎨 美化 ═══ */
               case 'wallpaper': _clearImg('wallpaper'); count++; break;
               case 'avatar': _clearHomeAvatar(); count++; break;
               case 'homeRight': _clearHomeRight(); count++; break;
-              case 'playerColor': localStorage.removeItem(PLAYER_COLOR_KEY); count++; break;
-              case 'iconPack': localStorage.removeItem(ICON_PACK_KEY); count++; break;
+              case 'playerPortrait': try { localStorage.removeItem(PLAYER_PORTRAIT_KEY); localStorage.removeItem(PLAYER_PORTRAIT_CUSTOM_KEY); } catch(e) {} count++; break;
+              case 'playerColor': try { localStorage.removeItem(PLAYER_COLOR_KEY); } catch(e) {} count++; break;
+              case 'iconPack': try { localStorage.removeItem(ICON_PACK_KEY); } catch(e) {} count++; break;
               case 'customFont':
                 _clearCustomFont();
                 var fs = _loadFontSettings(); if (fs.family === 'custom') { fs.family = 'system'; _saveFontSettings(fs); }
                 count++; break;
-              case 'theme': localStorage.removeItem(STORAGE_KEY); count++; break;
-              case 'fontSettings': localStorage.removeItem(FONT_STORAGE_KEY); count++; break;
-              case 'apis': localStorage.removeItem(API_STORAGE_KEY); count++; break;
-              case 'sms': localStorage.removeItem(SMS_STORAGE_KEY); count++; break;
-              case 'friends': localStorage.removeItem(FRIENDS_KEY); count++; break;
-              case 'fanMsgs': localStorage.removeItem(FAN_MSG_KEY); localStorage.removeItem(FAN_SEED_KEY); count++; break;
-              case 'weibo':
-                localStorage.removeItem(WEIBO_KEY); localStorage.removeItem(WEIBO_ACCT_KEY);
-                localStorage.removeItem(WEIBO_TREND_KEY); localStorage.removeItem(WEIBO_NOTIF_KEY);
+              case 'theme': try { localStorage.removeItem(STORAGE_KEY); } catch(e) {} count++; break;
+              case 'fontSettings': try { localStorage.removeItem(FONT_STORAGE_KEY); } catch(e) {} count++; break;
+              case 'storyColors': if (typeof ScenePlayer !== 'undefined') try { localStorage.removeItem(ScenePlayer.COLOR_KEY); } catch(e) {} count++; break;
+
+              /* ═══ 🔌 系统 ═══ */
+              case 'apis': try { localStorage.removeItem(API_STORAGE_KEY); } catch(e) {} count++; break;
+              case 'customCleanTags': try { localStorage.removeItem('av-custom-clean-tags'); } catch(e) {} count++; break;
+              case 'lyricTrans': try { localStorage.removeItem(LYRIC_TRANS_CACHE_KEY); } catch(e) {} count++; break;
+
+              /* ═══ 💬 通讯 ═══ */
+              case 'sms': try { localStorage.removeItem(SMS_STORAGE_KEY); } catch(e) {} count++; break;
+              case 'friends': try { localStorage.removeItem(FRIENDS_KEY); } catch(e) {} count++; break;
+              case 'fanMsgs':
+                try {
+                  localStorage.removeItem(FAN_MSG_KEY);
+                  localStorage.removeItem(FAN_SEED_KEY);
+                } catch(e) {}
                 count++; break;
-              case 'saves': localStorage.removeItem(SAVE_STORAGE_KEY); count++; break;
-              case 'scripts': localStorage.removeItem(SCRIPT_CACHE_KEY); localStorage.removeItem(SCRIPT_CUR_KEY); _scriptFilter = []; _pairFilter = []; count++; break;
-              case 'filmScripts': localStorage.removeItem(FILM_CACHE_KEY); count++; break;
-              case 'pendingAudition': localStorage.removeItem(PENDING_AUDITION_KEY); count++; break;
-              case 'castingFavor': localStorage.removeItem(CASTING_FAVOR_KEY); count++; break;
-              case 'releases': localStorage.removeItem(RELEASE_KEY); count++; break;
-              case 'awards': localStorage.removeItem(AWARDS_KEY); count++; break;
+
+              /* ═══ 📱 微博 ═══ */
+              case 'weibo':
+                try {
+                  localStorage.removeItem(WEIBO_KEY);
+                  localStorage.removeItem(WEIBO_ACCT_KEY);
+                  localStorage.removeItem(WEIBO_TREND_KEY);
+                  localStorage.removeItem(WEIBO_NOTIF_KEY);
+                  localStorage.removeItem('av-weibo-following');
+                } catch(e) {}
+                count++; break;
+
+              /* ═══ 📋 工作 ═══ */
+              case 'scripts':
+                try {
+                  localStorage.removeItem(SCRIPT_CACHE_KEY);
+                  localStorage.removeItem(SCRIPT_CUR_KEY);
+                } catch(e) {}
+                _scriptFilter = []; _pairFilter = [];
+                count++; break;
+              case 'filmScripts': try { localStorage.removeItem(FILM_CACHE_KEY); } catch(e) {} count++; break;
+              case 'pendingAudition': try { localStorage.removeItem(PENDING_AUDITION_KEY); } catch(e) {} count++; break;
+              case 'castingFavor': try { localStorage.removeItem(CASTING_FAVOR_KEY); } catch(e) {} count++; break;
+              case 'releases': try { localStorage.removeItem(RELEASE_KEY); } catch(e) {} count++; break;
+              case 'awards': try { localStorage.removeItem(AWARDS_KEY); } catch(e) {} count++; break;
+              case 'storyHistory':
+                try { localStorage.removeItem(STORY_HIST_KEY); } catch(e) {}
+                if (typeof ScenePlayer !== 'undefined') ScenePlayer.state.history = [];
+                count++; break;
+              case 'snowStories': try { localStorage.removeItem(SNOW_STORIES_KEY); } catch(e) {} count++; break;
+
+              /* ═══ 💾 数据 ═══ */
+              case 'saves': try { localStorage.removeItem(SAVE_STORAGE_KEY); } catch(e) {} count++; break;
+              case 'storyColorsAll':
+                try {
+                  if (typeof ScenePlayer !== 'undefined') {
+                    localStorage.removeItem(ScenePlayer.COLOR_KEY);
+                  }
+                } catch(e) {}
+                count++; break;
               case 'music':
-                localStorage.removeItem(MUSIC_CACHE_KEY); localStorage.removeItem(RADIO_HISTORY_KEY);
-                localStorage.removeItem(RADIO_FAV_KEY);
+                try {
+                  localStorage.removeItem(MUSIC_CACHE_KEY);
+                  localStorage.removeItem(RADIO_HISTORY_KEY);
+                  localStorage.removeItem(RADIO_FAV_KEY);
+                } catch(e) {}
                 if (_playerAudio) { _playerAudio.pause(); _playerAudio.src = ''; _playerAudio = null; }
                 _playerState = { name: '', artist: '', coverUrl: '', playing: false, lyrics: [], lyricText: '', playlist: [], playIndex: -1, playMode: 'sequence' };
                 count++; break;
-              case 'news': localStorage.removeItem(NEWS_LOCAL_KEY); count++; break;
-              case 'storyHistory': localStorage.removeItem(STORY_HIST_KEY); if (typeof ScenePlayer !== 'undefined') ScenePlayer.state.history = []; count++; break;
-              case 'actorAvatars': ALL_ACTORS.forEach(function(a) { _clearActorAvatar(a); }); count++; break;
-              case 'playerPortrait': try { localStorage.removeItem(PLAYER_PORTRAIT_KEY); localStorage.removeItem(PLAYER_PORTRAIT_CUSTOM_KEY); } catch(e) {} count++; break;
-              case 'storyColors': if (typeof ScenePlayer !== 'undefined') localStorage.removeItem(ScenePlayer.COLOR_KEY); count++; break;
-              case 'customCleanTags': localStorage.removeItem('av-custom-clean-tags'); count++; break;
-              case 'lyricTrans': localStorage.removeItem(LYRIC_TRANS_CACHE_KEY); count++; break;
+              case 'news': try { localStorage.removeItem(NEWS_LOCAL_KEY); } catch(e) {} count++; break;
+              case 'actorAvatars':
+                ALL_ACTORS.forEach(function(a) { _clearActorAvatar(a); });
+                count++; break;
+              case 'billHistory': try { localStorage.removeItem(BILL_HISTORY_KEY); } catch(e) {} count++; break;
+              case 'rankNpc': try { localStorage.removeItem(RANK_NPC_KEY); } catch(e) {} count++; break;
+              case 'varietyLocal': try { localStorage.removeItem('av-variety-local'); } catch(e) {} count++; break;
+              case 'achievements': try { localStorage.removeItem(ACHIEVEMENTS_KEY); } catch(e) {} count++; break;
+              case 'eventsAll':
+                try {
+                  /* 狗仔 / 黑料 / 官宣 / 吃醋 / 纪念日 / 出轨 / 求婚 / 结婚 / 怀孕 / 跳槽 等所有事件通知 */
+                  var eventKeys = [
+                    'av-doggy-notified', 'av-blackmat-notified',
+                    'av-public-state', 'av-public-cooldown', 'av-doggy-watch',
+                    'av-jealous-state', 'av-jealous-cooldown',
+                    'av-memory-dates', 'av-anniv-cooldown',
+                    'av-affair-film-state', 'av-affair-last-week',
+                    'av-confession-state', 'av-confession-last-week',
+                    'av-proposal-state', 'av-proposal-last-week',
+                    'av-wedding-state', 'av-wedding-last-week',
+                    'av-preg-link-state', 'av-preg-check-week',
+                    'av-poach-state', 'av-poach-cooldown',
+                    'av-marriage-event', 'av-marriage-daily-week',
+                    'av-showdown-last-week', 'av-breakup-last-week',
+                    'av-actor-confess-state', 'av-actor-confess-cooldown'
+                  ];
+                  for (var _eki = 0; _eki < eventKeys.length; _eki++) {
+                    localStorage.removeItem(eventKeys[_eki]);
+                  }
+                  /* 清理所有 av-showdown-seen-* */
+                  var _toDel = [];
+                  for (var _li = 0; _li < localStorage.length; _li++) {
+                    var _lk = localStorage.key(_li);
+                    if (_lk && _lk.indexOf('av-showdown-seen-') === 0) _toDel.push(_lk);
+                  }
+                  for (var _di = 0; _di < _toDel.length; _di++) localStorage.removeItem(_toDel[_di]);
+                } catch(e) {}
+                count++; break;
+              case 'storyRelations':
+                try {
+                  var relKeys = [
+                    'av-confession-state', 'av-proposal-state', 'av-wedding-state',
+                    'av-jealous-state', 'av-memory-dates',
+                    'av-public-state', 'av-affair-film-state',
+                    'av-actor-confess-state', 'av-preg-link-state'
+                  ];
+                  for (var _rki = 0; _rki < relKeys.length; _rki++) {
+                    localStorage.removeItem(relKeys[_rki]);
+                  }
+                } catch(e) {}
+                count++; break;
             }
-          }
           _ensureCss();
           if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 已重置 ' + count + ' 项');
           _render();
@@ -22068,7 +22204,7 @@ function _clearGameData() {
       $('#' + G.elIds.css).remove();
       _visible = false;
       _screen = 'home';
-      /* ═══ 不再自动清数据 ═══ */
+      _CLEARGAMEDATA();
       setTimeout(_buildShell, 100);
     }
     /* 监听所有可能触发「聊天切换」的事件 */
