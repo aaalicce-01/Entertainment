@@ -79,7 +79,7 @@
       '顾临渊': '#404040',      /* 男 */
     },
 
-portraits: {
+    portraits: {
   '九条朔': 'https://imgaly.51shazhu.com/autoupload/ocwwb/20260916/hlwj/1664X2496/_0000s_0002_%E4%B9%9D%E6%9D%A1%E6%9C%94.png/webp',
   '相叶止': 'https://imgaly.51shazhu.com/autoupload/ocwwb/20260916/JdGF/1664X2496/_0000s_0003_%E7%9B%B8%E5%8F%B6%E6%AD%A2.png/webp',
   '神代澪': 'https://imgaly.51shazhu.com/autoupload/ocwwb/20260916/g9qE/1664X2496/_0000s_0004_%E7%A5%9E%E4%BB%A3%E6%BE%AA.png/webp',
@@ -331,7 +331,7 @@ portraitFallback: 'https://imgaly.51shazhu.com/autoupload/ocwwb/20260916/VdOX/16
         day: "url('https://imgaly.51shazhu.com/autoupload/ocwwb/20260915/sLDW/1600X2848/_0000s_0012_%E9%99%86%E8%A5%BF%E6%B3%BDd.png/webp') center / cover no-repeat",
         night: "url('https://imgaly.51shazhu.com/autoupload/ocwwb/20260915/4Dn6/1600X2848/_0000s_0013_%E9%99%86%E8%A5%BF%E6%B3%BDn.png/webp') center / cover no-repeat"
       },
-      '白鲸娱乐总部': {
+      '白鲸娱乐': {
         day: "url('https://imgaly.51shazhu.com/autoupload/ocwwb/20260914/84fl/1600X2848/%E7%99%BD%E9%B2%B8%E5%A8%B1%E4%B9%90.png/webp') center / cover no-repeat",
         night: "url('https://imgaly.51shazhu.com/autoupload/ocwwb/20260914/84fl/1600X2848/%E7%99%BD%E9%B2%B8%E5%A8%B1%E4%B9%90.png/webp') center / cover no-repeat"
       },
@@ -2545,6 +2545,28 @@ var SCRIPT_CUR_KEY = 'av-script-current-v2';
   function _getCurScr(){try{var r=localStorage.getItem(SCRIPT_CUR_KEY);if(r)return JSON.parse(r);}catch(e){}return null;}
   function _setCurScr(s){try{if(s)localStorage.setItem(SCRIPT_CUR_KEY,JSON.stringify(s));else localStorage.removeItem(SCRIPT_CUR_KEY);}catch(e){}}
 
+
+/* ═══ 自定义弹窗专用：显示全部艺人（不按性向/等级过滤） ═══ */
+function _getAllActorsForCustom() {
+  var arr = [];
+  for (var co in COMPANIES) {
+    var acts = COMPANIES[co].actors;
+    for (var i = 0; i < acts.length; i++) {
+      var an = acts[i];
+      var ad = _v('艺人.' + co + '.' + an, {});
+      var lv = ad['等级'] || 'F级';
+      arr.push({
+        name: an,
+        level: lv,
+        company: co,
+        gender: ACTOR_GENDERS[an] || '男',
+        pairTypes: _getPairTypes(an)
+      });
+    }
+  }
+  return arr;
+}
+
 /* ═══ fallback剧本性别与称呼适配 ═══ */
 
 function _fallbackNeedActors(tmpl) {
@@ -3220,7 +3242,7 @@ function _mhr(hex) {
     ],
     '潮汐湾':[
       {n:'🚇潮汐湾站',t:'27.3%',l:'40.7%',d:'临海地铁终点站，也是高端人群的主要出入口。',s:'sub'},
-      {n:'🐳白鲸娱乐总部',t:'62.9%',l:'37%',d:'走高端精品路线的经纪公司，坐落在潮汐湾海岸边。签的人少但都红，访客要提前预约。',s:'co2'},
+      {n:'🐳白鲸娱乐',t:'62.9%',l:'37%',d:'走高端精品路线的经纪公司，坐落在潮汐湾海岸边。签的人少但都红，访客要提前预约。',s:'co2'},
       {n:'💖霜见遥',t:'51%',l:'31.8%',d:'独栋别墅，带私人泳池，落地窗正对海面，平时几乎不出门。',s:'abj'},
       {n:'💖陆西泽',t:'55.7%',l:'19.7%',d:'和霜见遥同区不同栋，有自己的一整层，访客要过两道门禁。',s:'abj'},
       {n:'💗海崖观景台',t:'40.2%',l:'48.3%',d:'悬崖边的观景平台，风很大，适合谈心、告白。',s:'lei'},
@@ -3495,7 +3517,7 @@ var _BOSSES = {
     '远洋经纪': '远洋经纪',
     '拾光娱乐': '拾光娱乐',
     '山海经纪': '山海经纪',
-    '白鲸娱乐总部': '白鲸娱乐'
+    '白鲸娱乐': '白鲸娱乐'
   };
 
   /* ═══ 艺人关系网配置 ═══ */
@@ -3868,9 +3890,222 @@ var _BOSSES = {
   }
 
   function _v(path, def) {
-    const d = _load();
-    if (!d) return def;
-    return (typeof _ !== 'undefined' && typeof _.get === 'function') ? _.get(d, path, def) : def;
+  /* ═══ 原本的 MVU 读取 ═══ */
+  var d = _load();
+  var mvuVal = (d && typeof _ !== 'undefined' && typeof _.get === 'function') ? _.get(d, path, undefined) : undefined;
+
+  /* ═══ 如果 MVU 有值，直接用 ═══ */
+  if (mvuVal !== undefined && mvuVal !== null && mvuVal !== '') {
+    if (typeof mvuVal === 'number') return mvuVal;
+    if (typeof mvuVal === 'string' && mvuVal.trim() !== '') return mvuVal;
+    if (Array.isArray(mvuVal) && mvuVal.length > 0) return mvuVal;
+    if (typeof mvuVal === 'object' && Object.keys(mvuVal).length > 0) return mvuVal;
+  }
+
+  /* ═══ MVU 没值，从聊天记录里兜底抓 ═══ */
+  try {
+    var _ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+    if (_ctx && _ctx.chat && _ctx.chat.length) {
+      /* 拼所有聊天记录 */
+      var _allText = '';
+      for (var _ci = 0; _ci < _ctx.chat.length; _ci++) {
+        if (_ctx.chat[_ci].mes) _allText += _ctx.chat[_ci].mes + '\n';
+      }
+
+      /* 根据路径抓不同字段 */
+      var _match = null;
+
+      if (path === 'user.姓名') {
+        _match = _allText.match(/姓名[：:]\s*([^\n\r，。]{1,20})/);
+      } else if (path === 'user.性别') {
+        _match = _allText.match(/性别[：:]\s*(男|女)/);
+      } else if (path === 'user.性取向') {
+        _match = _allText.match(/性取向[：:]\s*(异性恋|同性恋|双性恋)/);
+      } else if (path === 'user.当前住址') {
+        _match = _allText.match(/住址[：:]\s*([^\n\r，。]{1,20})/);
+      } else if (path === 'user.当前签约公司') {
+        _match = _allText.match(/签约公司[：:]\s*([^\n\r，。]{1,20})/);
+      } else if (path === 'user.等级') {
+        _match = _allText.match(/等级[：:]\s*([A-F]级)/);
+      } else if (path === 'user.当前位置') {
+        /* 优先抓「我前往了XXX」 */
+        var _locMatches = _allText.match(/我前往了([^\n\r，。！？]{2,30})/g);
+        if (_locMatches && _locMatches.length) {
+          var _last = _locMatches[_locMatches.length - 1];
+          _match = [_last, _last.replace('我前往了', '')];
+        } else {
+          _match = _allText.match(/当前位置[：:]\s*([^\n\r，。]{2,30})/);
+        }
+      } else if (path === 'user.当前时间.周数') {
+        _match = _allText.match(/第\s*(\d+)\s*周/);
+      } else if (path === 'user.当前时间.星期') {
+        _match = _allText.match(/(星期[一二三四五六日天])/);
+      } else if (path === 'user.当前时间.小时') {
+        var _h = _allText.match(/时间[：:]\s*\d{4}-\d{2}-\d{2}\s+(\d{1,2}):/);
+        if (_h) _match = [_h[0], _h[1]];
+      } else if (path === 'user.金币') {
+        _match = _allText.match(/金币[：:]\s*(\d+)/);
+      }
+
+      if (_match && _match[1]) {
+        var _found = _match[1].trim();
+        /* 数字字段转数字 */
+        if (/^\d+$/.test(_found)) return parseInt(_found);
+        return _found;
+      }
+    }
+  } catch(e) { console.warn('[AV兜底] _v 抓取失败:', e); }
+
+  /* ═══ 真的找不到，才用默认值 ═══ */
+  return def;
+}
+
+  /* ═══════════════════════════════════════
+     🩹 变量兜底：MVU 没值时从正文里抓
+     ═══════════════════════════════════════ */
+
+  /* 从最近 N 条 AI 消息里抓取文本（原样，不清洗） */
+  function _grabRecentAiText(n) {
+    try {
+      var context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+      if (!context || !context.chat || !context.chat.length) return '';
+      var chat = context.chat;
+      var lines = [];
+      var count = 0;
+      for (var i = chat.length - 1; i >= 0 && count < n; i--) {
+        if (chat[i].is_user) continue;
+        if (!chat[i].mes) continue;
+        lines.unshift(chat[i].mes);
+        count++;
+      }
+      return lines.join('\n');
+    } catch (e) { return ''; }
+  }
+
+  /* 从文本里抓位置 */
+  function _extractLocationFromText(text) {
+    if (!text) return '';
+    /* 优先匹配 「我前往了XXXX的XXXX」这种明确的句式 */
+    var patterns = [
+      /我前往了([^\n，。！？、"'」』]{2,30})/,
+      /我来到了([^\n，。！？、"'」』]{2,30})/,
+      /我回到了([^\n，。！？、"'」』]{2,30})/,
+      /我到达了([^\n，。！？、"'」』]{2,30})/,
+      /【我前往了([^】]+)】/,
+      /当前位置[：:]\s*([^\n，。！？、"'」』]{2,30})/,
+      /我现在(?:在|位于)([^\n，。！？、"'」』]{2,30})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var m = text.match(patterns[i]);
+      if (m && m[1]) {
+        var loc = m[1].trim();
+        /* 过滤掉太短或明显不对的 */
+        if (loc.length >= 2 && loc.length <= 30) return loc;
+      }
+    }
+    /* 兜底：直接扫 _MP 地图里所有地名，看正文里最近出现的是哪个 */
+    var _allPlaceNames = [];
+    for (var mk in _MP) {
+      for (var pi = 0; pi < _MP[mk].length; pi++) {
+        var pn = _MP[mk][pi].n.replace(/^[^\u4e00-\u9fa5A-Za-z]+/, '').trim();
+        if (pn) _allPlaceNames.push({ name: pn, area: mk, idx: pi });
+      }
+    }
+    /* 找正文里最后一次出现的地名 */
+    var lastFound = null;
+    var lastPos = -1;
+    for (var k = 0; k < _allPlaceNames.length; k++) {
+      var place = _allPlaceNames[k].name;
+      var pos = text.lastIndexOf(place);
+      if (pos > lastPos) {
+        lastPos = pos;
+        lastFound = _allPlaceNames[k];
+      }
+    }
+    if (lastFound && lastPos >= 0) {
+      /* 如果再往前找，能找到一个"前往/来到/回到"动词，就认这个 */
+      var before = text.substring(Math.max(0, lastPos - 20), lastPos);
+      if (/前往|来到|回到|到达|去往|进入|走进/.test(before)) {
+        return lastFound.area + '·' + lastFound.name;
+      }
+    }
+    return '';
+  }
+
+  /* 从文本里抓时间（小时） */
+  function _extractHourFromText(text) {
+    if (!text) return -1;
+    var patterns = [
+      /(凌晨|清晨|早上|上午|中午|下午|傍晚|晚上|深夜|半夜)(\d{1,2})点/,
+      /(\d{1,2})[：:](\d{2})/,
+      /(\d{1,2})点(?:钟)?/
+    ];
+    var m = text.match(patterns[0]);
+    if (m) {
+      var period = m[1];
+      var h = parseInt(m[2]);
+      if (period === '凌晨') h = h;
+      else if (period === '清晨' || period === '早上') h = h;
+      else if (period === '上午') h = h;
+      else if (period === '中午') h = h >= 12 ? h : h + 12;
+      else if (period === '下午') h = h < 12 ? h + 12 : h;
+      else if (period === '傍晚' || period === '晚上') h = h < 12 ? h + 12 : h;
+      else if (period === '深夜' || period === '半夜') h = h < 12 ? h : h;
+      if (h >= 0 && h <= 23) return h;
+    }
+    m = text.match(patterns[1]);
+    if (m) {
+      var hh = parseInt(m[1]);
+      if (hh >= 0 && hh <= 23) return hh;
+    }
+    m = text.match(patterns[2]);
+    if (m) {
+      var h3 = parseInt(m[1]);
+      if (h3 >= 0 && h3 <= 23) return h3;
+    }
+    return -1;
+  }
+
+  /* ═══ 带兜底的变量读取 ═══ */
+  function _vSafe(path, def, options) {
+    options = options || {};
+    /* 1. 先读 MVU 变量 */
+    var val = _v(path, undefined);
+
+    /* 2. 判断值是否有效 */
+    var isValid = false;
+    if (val !== undefined && val !== null && val !== '') {
+      if (typeof val === 'number') isValid = true;
+      else if (typeof val === 'string') isValid = val.trim() !== '' && val !== def;
+      else if (Array.isArray(val)) isValid = val.length > 0;
+      else if (typeof val === 'object') isValid = Object.keys(val).length > 0;
+      else isValid = true;
+    }
+
+    if (isValid) return val;
+
+    /* 3. 如果允许兜底，从最近 AI 正文里抓 */
+    if (!options.fallback) return def;
+
+    var recentText = _grabRecentAiText(options.n || 3);
+
+    /* 4. 按类型抓 */
+    if (options.type === 'location') {
+      var loc = _extractLocationFromText(recentText);
+      if (loc) {
+        console.log('[AV兜底] 从正文抓到位置:', loc);
+        return loc;
+      }
+    }
+    if (options.type === 'hour') {
+      var h = _extractHourFromText(recentText);
+      if (h >= 0) {
+        console.log('[AV兜底] 从正文抓到时间:', h);
+        return h;
+      }
+    }
+
+    return def;
   }
 
   /* ═══════════════════════════════════════
@@ -3878,7 +4113,7 @@ var _BOSSES = {
      ═══════════════════════════════════════ */
   let _radioMusicLoaded = false;
   let _playerAudio = null;
-  let _playerState = { name: '', artist: '', coverUrl: '', playing: false, lyrics: [], lyricText: '', playlist: [], playIndex: -1, playMode: 'sequence' };
+  let _playerState = { name: '', artist: '', coverUrl: '', playing: false, lyrics: [], lyricText: '', playlist: [], playIndex: -1, playMode: 'sequence', loopOne: false };
   let _progressTimer = null;
   let _homeTab = 'fav';
 
@@ -4245,6 +4480,18 @@ async function _playerPlaySong(name, artist) {
     _playerState = { name: result.Name || name, artist: result.Singer || artist || '', coverUrl: result.Cover || '', playing: true, lyrics, lyricText };
     _playerAudio.play().catch(() => {});
     _playerAudio.onended = () => {
+      /* ═══ 单曲循环：重新播放当前歌曲 ═══ */
+      if (_playerState.loopOne) {
+        try {
+          _playerAudio.currentTime = 0;
+          _playerAudio.play().catch(() => {});
+          _playerState.playing = true;
+        } catch (e) {
+          _playerState.playing = false;
+          _render();
+        }
+        return;
+      }
       /* 自动播放下一首 */
       if (_playerState.playlist.length > 0) {
         _playerNext();
@@ -4266,6 +4513,8 @@ async function _playerPlaySong(name, artist) {
   }
 
   function _playerPrev() {
+    /* ═══ 手动点上一首时，先关掉单曲循环 ═══ */
+    _playerState.loopOne = false;
     const pl = _playerState.playlist;
     if (pl.length > 0) {
       let idx = _playerState.playIndex;
@@ -4284,6 +4533,8 @@ async function _playerPlaySong(name, artist) {
     }
   }
   function _playerNext() {
+    /* ═══ 手动点下一首时，先关掉单曲循环，避免死循环 ═══ */
+    _playerState.loopOne = false;
     const pl = _playerState.playlist;
     if (pl.length > 0) {
       let idx = _playerState.playIndex;
@@ -5154,7 +5405,7 @@ function _wireTopButtonsDirect() {
 }
 
   function _updateChrome() {
-    const time = _v('user.当前时间.小时', 9);
+    const time = _vSafe('user.当前时间.小时', 9, { fallback: true, type: 'hour' });
     const weekday = _v('user.当前时间.星期', '星期一');
     const h = String(time).padStart(2, '0');
     $('#av-ph-time').text(h + ':00 ' + weekday);
@@ -5396,8 +5647,8 @@ function _wirePhone() {
     const wpStyle = wpUrl ? `background-image:url('${wpUrl}');background-size:cover;background-position:center;` : `background:${t.wallpaper},${t.bg};`;
     const week = _v('user.当前时间.周数', 1);
     const day = _v('user.当前时间.星期', '星期一');
-    const hour = _v('user.当前时间.小时', 9);
-    const location = _v('user.当前位置', 'user的家');
+    const hour = _vSafe('user.当前时间.小时', 9, { fallback: true, type: 'hour' });
+    const location = _vSafe('user.当前位置', 'user的家', { fallback: true, type: 'location' });
     const company = _v('user.当前签约公司', '未签约');
 
     let o = `<div class="av-home" style="${wpStyle};display:flex;flex-direction:column;height:100%;gap:10px;padding:10px 12px;position:relative">`;
@@ -5414,7 +5665,7 @@ function _wirePhone() {
     const avtBg = homeAvt ? `background-image:url('${homeAvt}');` : '';
     o += `<div style="flex:1;aspect-ratio:1;background:transparent;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(255,255,255,.06);box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden">`;
     o += `<div class="${avtCls}" id="av-home-avatar-btn" style="width:40px;height:40px;border-radius:50%;background-size:cover;background-position:center;${avtBg}flex-shrink:0;border:2px solid rgba(255,255,255,.12);cursor:pointer"></div>`;
-    o += `<div style="font-size:26px;font-weight:200;color:#fff;font-family:'Courier New',monospace;letter-spacing:2px;line-height:1">${String(hour).padStart(2,'0')}:00</div>`;
+    o += `<div class="av-refresh-loc" style="font-size:8px;color:rgba(255,255,255,.35);cursor:pointer;margin-top:2px" title="从最近剧情里刷新位置">📍 ${_esc(location.split('·').pop() || '未知')} ⟳</div>`;
     var _weather = _getWeather();
     var _weatherIcon = _getWeatherIcon(_weather);
     var _weatherColor = _getWeatherColor(_weather);
@@ -5460,6 +5711,7 @@ function _wirePhone() {
     o += `<div class="av-player-btn" id="av-p-prev">⏮</div>`;
     o += `<div class="av-player-btn main" id="av-p-toggle">${ps.playing ? '⏸' : '▶'}</div>`;
     o += `<div class="av-player-btn" id="av-p-next">⏭</div>`;
+    o += `<div class="av-player-btn${ps.loopOne ? ' loop-on' : ''}" id="av-p-loop" title="单曲循环" style="${ps.loopOne ? 'color:#ff6b9d;text-shadow:0 0 8px rgba(255,107,157,.8)' : 'opacity:.55'}">🔁</div>`;
     o += `</div>`;
     /* 进度条 */
     o += `<div class="av-player-progress">`;
@@ -5560,6 +5812,16 @@ function _wirePhone() {
     $s.find('#av-today-sched').on('click', function() {
       _screen = 'schedule'; _render();
     });
+    $s.find('.av-refresh-loc').on('click', function() {
+      var recentText = _grabRecentAiText(8);
+      var loc = _extractLocationFromText(recentText);
+      if (loc) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 从正文抓到位置：' + loc);
+      } else {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 最近剧情里没有找到位置信息');
+      }
+      _render();
+    });
     $s.find('#av-home-avatar-btn').on('click', function() {
       _showRechargeDialog();
     });
@@ -5571,6 +5833,13 @@ function _wirePhone() {
     $('#av-p-toggle').on('click', () => _playerToggle());
     $('#av-p-prev').on('click', () => _playerPrev());
     $('#av-p-next').on('click', () => _playerNext());
+    $('#av-p-loop').on('click', () => {
+      _playerState.loopOne = !_playerState.loopOne;
+      if (typeof triggerSlash === 'function') {
+        triggerSlash('/echo severity=info ' + (_playerState.loopOne ? '🔁 单曲循环已开启' : '➡️ 单曲循环已关闭'));
+      }
+      _render();
+    });
     $('#av-p-search').on('click', () => _showPlayerSearchDialog());
     $('#av-p-history').on('click', () => _showPlayerHistoryDialog());
     $('#av-p-track').on('click', function (e) {
@@ -6247,22 +6516,16 @@ function _wirePhone() {
 
       /* 根据当前位置+时间解析场景背景 */
       _resolveBackground: function(curScr, locationOverride) {
-        var hour = _v('user.当前时间.小时', 12);
+        var hour = _vSafe('user.当前时间.小时', 12, { fallback: true, type: 'hour' });
         var weather = _getWeather();
         var timeKey = (hour >= 6 && hour < 18) ? 'day' : 'night';
         var pos = locationOverride || _v('user.当前位置', '');
-        /* ═══ 如果 locationOverride 精确等于某个 key，直接用它，不要走 indexOf 改写 ═══ */
+
+        /* ═══ 如果 locationOverride 精确等于某个 key，直接用 ═══ */
         if (locationOverride && USER_CONFIG.locationBackgrounds && USER_CONFIG.locationBackgrounds[locationOverride]) {
           pos = locationOverride;
-        } else if (pos && USER_CONFIG.locationBackgrounds) {
-          var _allLocKeys = Object.keys(USER_CONFIG.locationBackgrounds).filter(function(k) { return k !== '_default'; });
-          var _bestKey = '';
-          for (var _lki = 0; _lki < _allLocKeys.length; _lki++) {
-            var _lk = _allLocKeys[_lki];
-            if (pos.indexOf(_lk) >= 0 && _lk.length > _bestKey.length) _bestKey = _lk;
-          }
-          if (_bestKey) pos = _bestKey;
         }
+
         var weatherOverlay = '';
         if (weather === '雨') weatherOverlay = 'linear-gradient(135deg, rgba(30,50,80,.5), rgba(20,40,70,.5))';
         else if (weather === '雪') weatherOverlay = 'linear-gradient(135deg, rgba(180,200,220,.3), rgba(150,180,200,.3))';
@@ -6270,19 +6533,34 @@ function _wirePhone() {
 
         if (pos && USER_CONFIG.locationBackgrounds) {
           var bestBg = null;
+          var bestScore = 0;
           var cleanPos = String(pos).replace(/[·\s\u3000]/g, '');
+
           var locKeys = Object.keys(USER_CONFIG.locationBackgrounds)
-            .filter(function(k) { return k !== '_default'; })
-            .sort(function(a, b) { return b.length - a.length; });
+            .filter(function(k) { return k !== '_default'; });
+
           for (var li = 0; li < locKeys.length; li++) {
             var locKey = locKeys[li];
             var cleanKey = String(locKey).replace(/[·\s\u3000]/g, '');
             if (!cleanKey) continue;
-            if (cleanPos.indexOf(cleanKey) >= 0) {
-              bestBg = USER_CONFIG.locationBackgrounds[locKey];
-              break;
+
+            /* ═══ 双向匹配 ═══ */
+            /* 方向 1：pos 包含 locKey（"栖梧区·樱花坂" 包含 "樱花坂"） */
+            /* 方向 2：locKey 包含 pos（"白鲸娱乐" 包含 "白鲸娱乐"） */
+            var hit = false;
+            if (cleanPos.indexOf(cleanKey) >= 0) hit = true;
+            else if (cleanKey.indexOf(cleanPos) >= 0) hit = true;
+
+            if (hit) {
+              /* 用命中长度做评分，最长匹配优先，避免"白鲸"误匹配"白鲸娱乐" */
+              var score = cleanKey.length;
+              if (score > bestScore) {
+                bestScore = score;
+                bestBg = USER_CONFIG.locationBackgrounds[locKey];
+              }
             }
           }
+
           if (bestBg) {
             var bg = bestBg[timeKey] || bestBg.day || bestBg.night || '';
             if (bg && bg.indexOf("url('')") < 0 && bg.indexOf('url("")') < 0) {
@@ -6305,7 +6583,6 @@ function _wirePhone() {
 
         return 'linear-gradient(135deg,#0a0a14 0%,#141428 40%,#0a0a18 100%)';
       },
-
       parse: function(text) {
         if (!text) return [];
 
@@ -9111,7 +9388,7 @@ var _genderDesc = _actorGender ? ('（' + _actorGender + '性）') : '';
       var week = _v('user.当前时间.周数', 1);
       var day = _v('user.当前时间.星期', '星期一');
       var hour = _v('user.当前时间.小时', 9);
-      var location = _v('user.当前位置', '');
+      var location = _vSafe('user.当前位置', '', { fallback: true, type: 'location' });
       var level = _v('user.等级', 'F级');
       var coins = _v('user.金币', 0);
       var fame = _v('user.名气', 0);
@@ -13876,26 +14153,109 @@ o += `</div></div>`;
       _savedHome = localStorage.getItem('av-map-last-home') || '';
     } catch(e) {}
 
-    var _curHome = _v('user.当前住址', '铁皮屋');
+    /* ═══ 根据 user.当前位置 自动定位地图区域 ═══ */
+    try {
+      var _curPos = _v('user.当前位置', '');
+      if (_curPos) {
+        var _cleanPos = String(_curPos).replace(/[·\s\u3000]/g, '');
+        /* 遍历所有地图，找哪个地图里有这个地点 */
+        for (var _mk in _MP) {
+          var _places = _MP[_mk];
+          for (var _pi = 0; _pi < _places.length; _pi++) {
+            var _pn = _places[_pi].n.replace(/^[^\u4e00-\u9fa5A-Za-z]+/, '').trim();
+            var _cleanPn = String(_pn).replace(/[·\s\u3000]/g, '');
+            if (_cleanPn && (_cleanPos.indexOf(_cleanPn) >= 0 || _cleanPn.indexOf(_cleanPos) >= 0)) {
+              _savedMapKey = _mk;
+              break;
+            }
+          }
+          if (_savedMapKey === _mk) break;
+        }
+      }
+    } catch(e) {}
+
+    var _curHome = _v('user.当前住址', '');
+/* ═══ 兜底：从聊天记录里抓住址 ═══ */
+if (!_curHome || _curHome === '铁皮屋') {
+  try {
+    var _ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+    if (_ctx && _ctx.chat) {
+      var _allText = '';
+      for (var _ci = 0; _ci < _ctx.chat.length; _ci++) {
+        if (_ctx.chat[_ci].mes) _allText += _ctx.chat[_ci].mes + '\n';
+      }
+      /* 匹配「住址：铁皮屋」「住址：XX」「住在XX」 */
+      var _homes = ['铁皮屋','栖梧町屋','可长租公寓','潮汐湾海景短租','塞纳公寓','温泉民宿','古镇民宿','猎人小屋'];
+      var _homeHit = '';
+      var _hm = _allText.match(/住址[：:]\s*([^\n\r，。]{1,20})/);
+      if (_hm && _hm[1]) {
+        _homeHit = _hm[1].trim();
+      } else {
+        for (var _hi = 0; _hi < _homes.length; _hi++) {
+          if (_allText.indexOf('住在' + _homes[_hi]) >= 0 || _allText.indexOf('搬进' + _homes[_hi]) >= 0) {
+            _homeHit = _homes[_hi];
+            break;
+          }
+        }
+      }
+      if (_homeHit) _curHome = _homeHit;
+    }
+  } catch(e) {}
+}
+if (!_curHome) _curHome = '铁皮屋';  /* 真没找到才用默认 */
+    /* ═══ 如果变量里没住址，从正文抓 ═══ */
+    if (!_curHome || _curHome === '铁皮屋') {
+      var _recentText = _grabRecentAiText(5);
+      var _homePatterns = ['铁皮屋','栖梧町屋','可长租公寓','潮汐湾海景短租','塞纳公寓','温泉民宿','古镇民宿','猎人小屋'];
+      for (var _hpi = 0; _hpi < _homePatterns.length; _hpi++) {
+        if (_recentText.indexOf('住在' + _homePatterns[_hpi]) >= 0 ||
+            _recentText.indexOf('搬到了' + _homePatterns[_hpi]) >= 0 ||
+            _recentText.indexOf('搬进' + _homePatterns[_hpi]) >= 0) {
+          _curHome = _homePatterns[_hpi];
+          break;
+        }
+      }
+    }
 
     /* 决定这次打开用哪个区域： */
     /* 优先级：1. 保存过的区域（如果住址没变） 2. 住址对应的区域 3. 默认旧港 */
     if (!_mapInitDone) {
-      if (_savedMapKey && _savedHome === _curHome) {
-        /* 住址没变，用上次保存的区域 */
+      /* ═══ 优先用「当前位置」定位地图 ═══ */
+      if (_savedMapKey) {
         _mapCurKey = _savedMapKey;
+      } else if (_savedHome === _curHome) {
+        _mapCurKey = _savedMapKey || '旧港';
       } else {
-        /* 住址变了，或首次打开，按住址重新定位 */
         for (var hk in _HOME_MAP) {
           if (_curHome.indexOf(hk) >= 0) { _mapCurKey = _HOME_MAP[hk]; break; }
         }
-        if (!_mapCurKey) _mapCurKey = '旧港';  /* 兜底 */
+        if (!_mapCurKey) _mapCurKey = '旧港';
       }
       _mapInitDone = true;
     }
 
     /* 每次打开地图时，持久化住址 */
     try { localStorage.setItem('av-map-last-home', _curHome); } catch(e) {}
+
+    /* ═══ 如果变量和地图不同步，从正文里抓当前区域 ═══ */
+    var _recentMapText = _grabRecentAiText(4);
+    var _autoMapKey = '';
+    for (var _amk in _MP) {
+      /* 找地图名（如"栖梧区"）在正文里最后一次出现的位置 */
+      var _pos = _recentMapText.lastIndexOf(_amk);
+      if (_pos > 0) {
+        /* 前面20字里有没有"前往/来到/回到/进入" */
+        var _before = _recentMapText.substring(Math.max(0, _pos - 20), _pos);
+        if (/前往|来到|回到|到达|去往|进入|走进|位于/.test(_before)) {
+          _autoMapKey = _amk;
+        }
+      }
+    }
+    /* 优先用自动抓取的，其次用保存的 */
+    if (_autoMapKey) {
+      _mapCurKey = _autoMapKey;
+      try { localStorage.setItem('av-map-cur-key', _mapCurKey); } catch(e) {}
+    }
 
     var mk = _mapCurKey;
     var places = _MP[mk] || [];
@@ -15372,7 +15732,8 @@ function _drawShortScripts($c) {
   o += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px;margin-bottom:6px">';
   o += '<div style="font-size:8px;color:' + t.textMuted + '">📱 短视频 · 共 ' + scripts.length + ' 个剧本</div>';
   o += '<div style="display:flex;gap:4px">';
-  o += '<button class="av-dlg-btn av-dlg-ok" id="av-short-tags" style="font-size:8px;padding:4px 12px;background:rgba(255,120,180,.12);border-color:rgba(255,120,180,.25);color:#ff78b4">🏷️ 标签管理</button>';
+  o += '<button class="av-dlg-btn av-dlg-ok" id="av-short-custom" style="font-size:8px;padding:4px 12px;background:rgba(255,120,180,.12);border-color:rgba(255,120,180,.25);color:#ff78b4">✏️ 自定义</button>';
+  o += '<button class="av-dlg-btn av-dlg-ok" id="av-short-tags" style="font-size:8px;padding:4px 12px;background:rgba(160,120,220,.12);border-color:rgba(160,120,220,.25);color:#b090e0">🏷️ 标签</button>';
   o += '<button class="av-dlg-btn av-dlg-ok" id="av-short-refresh" style="font-size:8px;padding:4px 12px">' + (scripts.length ? '🔄 刷新' : '✨ 生成剧本') + '</button>';
   o += '</div></div>';
 
@@ -15434,6 +15795,10 @@ function _drawShortScripts($c) {
 
   /* 标签管理 */
   $c.find('#av-short-tags').on('click', function() { _showShortTagsDialog(); });
+  /* 自定义短视频剧本 */
+  $c.find('#av-short-custom').on('click', function() {
+    _showShortCustomDialog($c);
+  });
 
   /* 卡片点击 → 详情弹窗 */
   $c.find('.av-short-card').on('click', function() {
@@ -15452,6 +15817,207 @@ function _drawShortScripts($c) {
     if (!scr) return;
     _showShortScriptDetail(scr, $c);
   });
+}
+
+/* ═══ 从玩家灵感生成短视频剧本 ═══ */
+async function _genShortScriptFromIdea(title, idea, actorName, role) {
+  var api = _getAuxApi();
+  if (!api || !api.endpoint || !api.key) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning ⚠️ 需要配置辅助 API');
+    return null;
+  }
+
+  var aInfo = null;
+  var allActors = _getAvailActors(_v('user.等级', 'F级'));
+  for (var i = 0; i < allActors.length; i++) {
+    if (allActors[i].name === actorName) { aInfo = allActors[i]; break; }
+  }
+  if (!aInfo) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 搭戏艺人不可用');
+    return null;
+  }
+
+  var playerGender = _getPlayerGender() || '女';
+  var pairTypes = _getPairTypes(actorName);
+  var actorGender = ACTOR_GENDERS[actorName] || '男';
+
+  var userLi = LEVEL_ORDER.indexOf(_v('user.等级', 'F级'));
+  var baseRewards = [800, 1500, 3000, 6000, 12000];
+  var baseReward = baseRewards[userLi] || 800;
+
+  var prompt = '';
+  prompt += '你是一个狗血/沙雕短视频剧本生成器。玩家给了你一段灵感，请把它扩展成一个完整的短视频剧本。\n\n';
+  prompt += '【玩家给的灵感 / 大纲】\n' + idea + '\n\n';
+  if (title) prompt += '【玩家指定的标题】' + title + '\n\n';
+  prompt += '【预设信息（必须遵守）】\n';
+  prompt += '玩家性别：' + playerGender + '性\n';
+  prompt += '搭戏艺人：' + actorName + '（' + actorGender + '性）\n';
+  prompt += '玩家角色：' + role + '\n';
+  prompt += '可用配对：' + pairTypes.join('/') + '\n\n';
+  prompt += '【配对说明】\n';
+  prompt += '· BL（男男）：玩家和搭戏艺人都是男性\n';
+  prompt += '· GL（女女）：玩家和搭戏艺人都是女性\n';
+  prompt += '· BG：异性，艺人主导\n';
+  prompt += '· GB：异性，玩家主导\n';
+  prompt += '从"可用配对"范围内选一个 pairType。\n\n';
+  prompt += '【生成要求】\n';
+  prompt += '1. 尊重玩家灵感的核心设定和场景，不要改得面目全非\n';
+  prompt += '2. 补充细节让剧情完整可拍：具体场景、节奏推进、情绪转折\n';
+  prompt += '3. 短视频风格：节奏快、反转强、狗血或沙雕或暧昧\n';
+  prompt += '4. 标题：如果玩家没给，就取一个网文式标题（10-20字，带钩子）\n';
+  prompt += '5. synopsis：40-80字，画面感强\n';
+  prompt += '6. outline：150-250字，5个情节节点，格式「1.【节点名】描述…」\n';
+  prompt += '7. 【人称规则】大纲里玩家统一用「你」指代，禁止用「我」「玩家」「主角」；搭戏艺人用他的真名\n';
+  prompt += '8. 只输出 JSON：[{"title":"","synopsis":"","outline":"","pairType":""}]\n';
+  prompt += '9. 不要 markdown 代码块\n';
+
+  try {
+    var reply = await _callApi(
+      [{ role: 'system', content: '你是短视频剧本生成器。只输出合法JSON对象，不要其他文字。' },
+       { role: 'user', content: prompt }],
+      { temperature: 0.9, max_tokens: 3000 }
+    );
+    reply = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    var m = reply.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    var r = JSON.parse(m[0]);
+
+    var aLi = LEVEL_ORDER.indexOf(aInfo.level);
+    var rRole = role || '女主';
+    var rewardMultiplier = rRole === '女主' ? 1 : (rRole === '女配' ? 0.7 : 0.4);
+    var finalReward = Math.round(baseReward * rewardMultiplier * (0.9 + Math.random() * 0.2));
+
+    var pairType = (r.pairType || '').toUpperCase();
+    if (!pairType || pairTypes.indexOf(pairType) < 0) pairType = pairTypes[0];
+
+    return {
+      id: 'short_custom_' + Date.now().toString(36),
+      title: r.title || title || '自定义短视频',
+      tags: ['自定义'],
+      actors: [actorName],
+      role: rRole,
+      pairType: pairType,
+      pairTypes: [pairType],
+      synopsis: r.synopsis || '',
+      outline: r.outline || '',
+      reward: finalReward,
+      stamina: 10 + Math.floor(Math.random() * 15),
+      scriptType: 'short',
+      custom: true
+    };
+  } catch (e) {
+    console.warn('[自定义短视频] 失败:', e);
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 生成失败：' + (e.message || ''));
+    return null;
+  }
+}
+
+/* ═══ 从玩家灵感生成影视剧本 ═══ */
+async function _genFilmScriptFromIdea(title, idea, actorNames, role, filmType) {
+  var api = _getAuxApi();
+  if (!api || !api.endpoint || !api.key) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning ⚠️ 需要配置辅助 API');
+    return null;
+  }
+
+  var ft = FILM_TYPES[filmType] || FILM_TYPES['tv'];
+  var playerGender = _getPlayerGender() || '女';
+
+  var actorList = [];
+  var allActors = _getAvailActors(_v('user.等级', 'F级'));
+  for (var i = 0; i < actorNames.length; i++) {
+    for (var j = 0; j < allActors.length; j++) {
+      if (allActors[j].name === actorNames[i]) { actorList.push(allActors[j]); break; }
+    }
+  }
+  if (!actorList.length) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity:warning 搭戏艺人不可用');
+    return null;
+  }
+
+  var actorDesc = '';
+  for (var k = 0; k < actorList.length; k++) {
+    var a = actorList[k];
+    var pt = _getPairTypes(a.name);
+    actorDesc += '· ' + a.name + '（' + (ACTOR_GENDERS[a.name] || '男') + '性，可用配对：' + pt.join('/') + '）\n';
+  }
+
+  var userLi = LEVEL_ORDER.indexOf(_v('user.等级', 'F级'));
+  var baseRewards = [3000, 8000, 20000, 60000, 200000];
+  var baseReward = baseRewards[userLi] || 3000;
+
+  var prompt = '';
+  prompt += '你是一个影视剧本生成器。玩家给了你一段灵感，请把它扩展成一个完整的影视项目。\n\n';
+  prompt += '【玩家给的灵感 / 大纲】\n' + idea + '\n\n';
+  if (title) prompt += '【玩家指定的标题】' + title + '\n\n';
+  prompt += '【预设信息（必须遵守）】\n';
+  prompt += '影视类型：' + ft.name + '\n';
+  prompt += '玩家性别：' + playerGender + '性\n';
+  prompt += '搭戏艺人：\n' + actorDesc;
+  prompt += '玩家角色：' + role + '\n\n';
+  prompt += '【生成要求】\n';
+  prompt += '1. 尊重玩家灵感的核心设定和故事线，不要改得面目全非\n';
+  prompt += '2. 补充细节让剧情完整：人物关系、冲突升级、高潮和结局\n';
+  prompt += '3. 标题：如果玩家没给，就取一个正式片名（2-8字，简洁有质感，像真实影视剧）\n';
+  prompt += '   ✅ 正例：《长夜》《归途》《人间烟火》《无名之辈》\n';
+  prompt += '   ❌ 反例：带冒号副标题的、网文标题党、加「之」拼接的长句\n';
+  prompt += '4. 简介：60-100字，剧情张力强\n';
+  prompt += '5. 大纲：200-350字，5-6个情节节点\n';
+  prompt += '6. pairType：从搭戏艺人的"可用配对"范围内选一个（BL/GL/BG/GB）\n';
+  prompt += '7. 【人称规则】大纲里玩家统一用「你」指代，禁止用「我」「玩家」「主角」；搭戏艺人用真名\n';
+  prompt += '8. 只输出 JSON：[{"title":"","synopsis":"","outline":"","pairType":""}]\n';
+  prompt += '9. 不要 markdown 代码块\n';
+
+  try {
+    var reply = await _callApi(
+      [{ role: 'system', content: '你是影视剧本生成器。只输出合法JSON对象，不要其他文字。' },
+       { role: 'user', content: prompt }],
+      { temperature: 0.9, max_tokens: 4000 }
+    );
+    reply = reply.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    var m = reply.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    var r = JSON.parse(m[0]);
+
+    /* 集数 */
+    var episodes = ft.episodes[Math.floor(Math.random() * ft.episodes.length)];
+    var rewardMultiplier = role === '主角' ? 1 : (role === '配角' ? 0.5 : 0.2);
+    var finalReward = Math.round(baseReward * rewardMultiplier * episodes * (0.9 + Math.random() * 0.2));
+
+    /* 配对类型校验 */
+    var availPairs = _getPairTypes(actorList[0].name);
+    var pairType = (r.pairType || '').toUpperCase();
+    if (!pairType || availPairs.indexOf(pairType) < 0) pairType = availPairs[0];
+
+    /* 选角导演 */
+    var director = _pickCastingDirector(['剧情']);
+
+    return {
+      id: 'film_custom_' + Date.now().toString(36),
+      title: r.title || title || '自定义影视项目',
+      filmType: filmType,
+      filmTypeName: ft.name,
+      tags: ['剧情'],
+      actors: actorNames.slice(),
+      role: role,
+      pairType: pairType,
+      pairTypes: [pairType],
+      synopsis: r.synopsis || '',
+      outline: r.outline || '',
+      episodes: episodes,
+      reward: finalReward,
+      stamina: 30 + Math.floor(Math.random() * 40),
+      scriptType: 'film',
+      auditioned: false,
+      passed: false,
+      castingDirector: director,
+      custom: true
+    };
+  } catch (e) {
+    console.warn('[自定义影视] 失败:', e);
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 生成失败：' + (e.message || ''));
+    return null;
+  }
 }
 
 /* ═══ 短视频剧本生成 ═══ */
@@ -15743,6 +16309,245 @@ function _showShortScriptDetail(scr, $c) {
   });
 }
 
+/* ═══ 自定义短视频剧本 ═══ */
+function _showShortCustomDialog($c) {
+  var t = _t();
+  var level = _v('user.等级', 'F级');
+  var actors = _getAllActorsForCustom();
+  if (!actors.length) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有可用的搭戏艺人');
+    return;
+  }
+
+  var d = '';
+  d += '<div class="av-dlg-h">✏️ 自定义短视频</div>';
+  d += '<div class="av-dlg-sub">写下你想要的灵感，AI 会帮你补全剧本</div>';
+
+  d += '<div class="av-api-form">';
+
+  /* 标题 */
+  d += '<label>标题 <span style="color:' + t.textMuted + ';font-weight:400">（可留空，AI 会取）</span></label>';
+  d += '<input id="av-sc-title" type="text" placeholder="如：深夜电梯" maxlength="20">';
+
+  /* 灵感大纲 */
+  d += '<label>灵感 / 大纲 <span style="color:#ff78b4">*必填</span></label>';
+  d += '<textarea id="av-sc-idea" placeholder="随便写几句就行，比如：\n一个加班到深夜的女主，在电梯里遇到一个西装男人。电梯停电了，两个人被困住。气氛很微妙。" style="width:100%;height:120px;padding:10px;border:1px solid ' + t.border + ';border-radius:8px;background:' + t.bgAlt + ';color:' + t.text + ';font-size:10px;resize:vertical;box-sizing:border-box;outline:none;font-family:inherit;line-height:1.6"></textarea>';
+
+  /* 搭戏艺人（单选） */
+  d += '<label>搭戏艺人</label>';
+  d += '<div id="av-sc-actors" style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 8px;max-height:120px;overflow-y:auto;padding:4px;border:1px solid ' + t.border + ';border-radius:8px;background:' + t.bgAlt + '">';
+  for (var i = 0; i < actors.length; i++) {
+    var an = actors[i].name;
+    d += '<span class="av-sc-actor" data-actor="' + _esc(an) + '" style="font-size:8px;padding:3px 8px;border-radius:10px;cursor:pointer;background:' + t.surfaceHover + ';color:' + t.textMuted + ';border:1px solid ' + t.border + ';transition:all .15s">' + _esc(an) + '</span>';
+  }
+  d += '</div>';
+
+  /* 角色 */
+  d += '<label>你的角色</label>';
+  d += '<div id="av-sc-role" style="display:flex;gap:4px;margin:4px 0 8px">';
+  var roleOpts = ['女主', '女配', '炮灰'];
+  for (var ri = 0; ri < roleOpts.length; ri++) {
+    var role = roleOpts[ri];
+    var roleColor = role === '女主' ? '#e05080' : (role === '女配' ? '#c8a040' : '#808080');
+    d += '<span class="av-sc-role-pick" data-role="' + role + '" style="flex:1;text-align:center;font-size:9px;padding:6px;border-radius:8px;cursor:pointer;background:' + t.surfaceHover + ';color:' + t.textMuted + ';border:1px solid ' + t.border + ';transition:all .15s;' + (ri === 0 ? 'background:' + roleColor + '22;color:' + roleColor + ';border-color:' + roleColor + '66' : '') + '">' + role + '</span>';
+  }
+  d += '</div>';
+
+  d += '</div>';
+
+  d += '<div class="av-dlg-actions">';
+  d += '<button class="av-dlg-btn av-dlg-cancel" id="av-sc-cancel">取消</button>';
+  d += '<button class="av-dlg-btn av-dlg-ok" id="av-sc-gen" style="background:rgba(255,120,180,.15);border-color:rgba(255,120,180,.4);color:#ff78b4">🤖 让 AI 生成</button>';
+  d += '</div>';
+
+  var w = _dialog(d);
+  var selectedActor = '';
+  var selectedRole = '女主';
+
+  w.find('.av-sc-actor').on('click', function() {
+    var an = $(this).data('actor');
+    w.find('.av-sc-actor').css({ background: t.surfaceHover, color: t.textMuted, borderColor: t.border });
+    if (selectedActor === an) {
+      selectedActor = '';
+    } else {
+      selectedActor = an;
+      $(this).css({ background: 'rgba(255,120,180,.15)', color: '#ff78b4', borderColor: 'rgba(255,120,180,.4)' });
+    }
+  });
+
+  w.find('.av-sc-role-pick').on('click', function() {
+    selectedRole = $(this).data('role');
+    var roleColor = selectedRole === '女主' ? '#e05080' : (selectedRole === '女配' ? '#c8a040' : '#808080');
+    w.find('.av-sc-role-pick').css({ background: t.surfaceHover, color: t.textMuted, borderColor: t.border });
+    $(this).css({ background: roleColor + '22', color: roleColor, borderColor: roleColor + '66' });
+  });
+
+  w.find('#av-sc-cancel').on('click', function() { w.remove(); });
+
+  w.find('#av-sc-gen').on('click', async function() {
+    var title = w.find('#av-sc-title').val().trim();
+    var idea = w.find('#av-sc-idea').val().trim();
+    if (!idea) {
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请至少写一段灵感大纲');
+      return;
+    }
+    if (!selectedActor) {
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请选择一位搭戏艺人');
+      return;
+    }
+
+    var $btn = $(this);
+    $btn.prop('disabled', true).text('生成中...');
+
+    var result = await _genShortScriptFromIdea(title, idea, selectedActor, selectedRole);
+    if (!result) {
+      $btn.prop('disabled', false).text('🤖 让 AI 生成');
+      return;
+    }
+
+    /* 存入缓存并打开详情 */
+    var cache = _loadShortCache();
+    cache.unshift(result);
+    _saveShortCache(cache);
+    w.remove();
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 已生成短视频：' + result.title);
+    _drawShortScripts($c);
+  });
+}
+
+/* ═══ 自定义影视剧本 ═══ */
+function _showFilmCustomDialog($c) {
+  var t = _t();
+  var level = _v('user.等级', 'F级');
+  var actors = _getAllActorsForCustom();
+  if (!actors.length) {
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 没有可用的搭戏艺人');
+    return;
+  }
+
+  var d = '';
+  d += '<div class="av-dlg-h">✏️ 自定义影视项目</div>';
+  d += '<div class="av-dlg-sub">写下你的灵感，AI 会补全为完整影视剧本</div>';
+
+  d += '<div class="av-api-form">';
+
+  /* 标题 */
+  d += '<label>标题 <span style="color:' + t.textMuted + ';font-weight:400">（可留空）</span></label>';
+  d += '<input id="av-fc-title" type="text" placeholder="如：长夜" maxlength="20">';
+
+  /* 类型 */
+  d += '<label>影视类型</label>';
+  d += '<div id="av-fc-type" style="display:flex;gap:4px;margin:4px 0 8px">';
+  var typeOpts = [
+    { key: 'tv', label: '📺 电视剧' },
+    { key: 'movie', label: '🎬 电影' },
+    { key: 'web', label: '🎥 网剧' },
+    { key: 'other', label: '📹 其他' }
+  ];
+  for (var ti = 0; ti < typeOpts.length; ti++) {
+    var to = typeOpts[ti];
+    d += '<span class="av-fc-type-pick" data-type="' + to.key + '" style="flex:1;text-align:center;font-size:9px;padding:6px;border-radius:8px;cursor:pointer;background:' + (ti === 0 ? 'rgba(224,80,128,.15)' : t.surfaceHover) + ';color:' + (ti === 0 ? '#e05080' : t.textMuted) + ';border:1px solid ' + (ti === 0 ? 'rgba(224,80,128,.4)' : t.border) + ';transition:all .15s">' + to.label + '</span>';
+  }
+  d += '</div>';
+
+  /* 灵感大纲 */
+  d += '<label>灵感 / 大纲 <span style="color:#ff78b4">*必填</span></label>';
+  d += '<textarea id="av-fc-idea" placeholder="写清楚大概的剧情走向，比如：\n一部悬疑电影，主角是一名律师，接手一桩看似简单的离婚案。但调查中她发现，案件的当事人和自己十年前的一段往事有关。她想保护当事人，又怕真相会毁掉自己。" style="width:100%;height:140px;padding:10px;border:1px solid ' + t.border + ';border-radius:8px;background:' + t.bgAlt + ';color:' + t.text + ';font-size:10px;resize:vertical;box-sizing:border-box;outline:none;font-family:inherit;line-height:1.6"></textarea>';
+
+  /* 搭戏艺人（多选，影视可以多人） */
+  d += '<label>搭戏艺人 <span style="color:' + t.textMuted + ';font-weight:400">（可多选，最多 2 人）</span></label>';
+  d += '<div id="av-fc-actors" style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 8px;max-height:120px;overflow-y:auto;padding:4px;border:1px solid ' + t.border + ';border-radius:8px;background:' + t.bgAlt + '">';
+  for (var i = 0; i < actors.length; i++) {
+    var an = actors[i].name;
+    d += '<span class="av-fc-actor" data-actor="' + _esc(an) + '" style="font-size:8px;padding:3px 8px;border-radius:10px;cursor:pointer;background:' + t.surfaceHover + ';color:' + t.textMuted + ';border:1px solid ' + t.border + ';transition:all .15s">' + _esc(an) + '</span>';
+  }
+  d += '</div>';
+
+  /* 角色 */
+  d += '<label>你的角色</label>';
+  d += '<div id="av-fc-role" style="display:flex;gap:4px;margin:4px 0 8px">';
+  var roleOpts2 = ['主角', '配角', '龙套'];
+  for (var ri = 0; ri < roleOpts2.length; ri++) {
+    var role = roleOpts2[ri];
+    var roleColor = role === '主角' ? '#e05080' : (role === '配角' ? '#c8a040' : '#808080');
+    d += '<span class="av-fc-role-pick" data-role="' + role + '" style="flex:1;text-align:center;font-size:9px;padding:6px;border-radius:8px;cursor:pointer;background:' + t.surfaceHover + ';color:' + t.textMuted + ';border:1px solid ' + t.border + ';transition:all .15s;' + (ri === 0 ? 'background:' + roleColor + '22;color:' + roleColor + ';border-color:' + roleColor + '66' : '') + '">' + role + '</span>';
+  }
+  d += '</div>';
+
+  d += '</div>';
+
+  d += '<div class="av-dlg-actions">';
+  d += '<button class="av-dlg-btn av-dlg-cancel" id="av-fc-cancel">取消</button>';
+  d += '<button class="av-dlg-btn av-dlg-ok" id="av-fc-gen" style="background:rgba(255,120,180,.15);border-color:rgba(255,120,180,.4);color:#ff78b4">🤖 让 AI 生成</button>';
+  d += '</div>';
+
+  var w = _dialog(d);
+  var selectedActors = [];
+  var selectedRole = '主角';
+  var selectedType = 'tv';
+
+  w.find('.av-fc-type-pick').on('click', function() {
+    selectedType = $(this).data('type');
+    var typeColor = selectedType === 'tv' ? '#e05080' : (selectedType === 'movie' ? '#c8a040' : (selectedType === 'web' ? '#5080d0' : '#808080'));
+    w.find('.av-fc-type-pick').css({ background: t.surfaceHover, color: t.textMuted, borderColor: t.border });
+    $(this).css({ background: typeColor + '22', color: typeColor, borderColor: typeColor + '66' });
+  });
+
+  w.find('.av-fc-actor').on('click', function() {
+    var an = $(this).data('actor');
+    var idx = selectedActors.indexOf(an);
+    if (idx >= 0) {
+      selectedActors.splice(idx, 1);
+      $(this).css({ background: t.surfaceHover, color: t.textMuted, borderColor: t.border });
+    } else {
+      if (selectedActors.length >= 2) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 最多选择 2 位搭戏艺人');
+        return;
+      }
+      selectedActors.push(an);
+      $(this).css({ background: 'rgba(255,120,180,.15)', color: '#ff78b4', borderColor: 'rgba(255,120,180,.4)' });
+    }
+  });
+
+  w.find('.av-fc-role-pick').on('click', function() {
+    selectedRole = $(this).data('role');
+    var roleColor = selectedRole === '主角' ? '#e05080' : (selectedRole === '配角' ? '#c8a040' : '#808080');
+    w.find('.av-fc-role-pick').css({ background: t.surfaceHover, color: t.textMuted, borderColor: t.border });
+    $(this).css({ background: roleColor + '22', color: roleColor, borderColor: roleColor + '66' });
+  });
+
+  w.find('#av-fc-cancel').on('click', function() { w.remove(); });
+
+  w.find('#av-fc-gen').on('click', async function() {
+    var title = w.find('#av-fc-title').val().trim();
+    var idea = w.find('#av-fc-idea').val().trim();
+    if (!idea) {
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 请至少写一段灵感大纲');
+      return;
+    }
+    if (!selectedActors.length) {
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity:warning 请至少选择一位搭戏艺人');
+      return;
+    }
+
+    var $btn = $(this);
+    $btn.prop('disabled', true).text('生成中...');
+
+    var result = await _genFilmScriptFromIdea(title, idea, selectedActors, selectedRole, selectedType);
+    if (!result) {
+      $btn.prop('disabled', false).text('🤖 让 AI 生成');
+      return;
+    }
+
+    var cache = _loadFilmCache();
+    cache.unshift(result);
+    _saveFilmCache(cache);
+    w.remove();
+    if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 已生成影视项目：' + result.title);
+    _drawFilmScripts($c);
+  });
+}
+
 /* ═══ 短视频标签管理弹窗 ═══ */
 function _showShortTagsDialog() {
   var t = _t();
@@ -15811,7 +16616,8 @@ function _drawFilmScripts($c) {
   o += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px;margin-bottom:6px">';
   o += '<div style="font-size:8px;color:' + t.textMuted + '">🎞️ 影视 · 共 ' + scripts.length + ' 个项目</div>';
   o += '<div style="display:flex;gap:4px">';
-  o += '<button class="av-dlg-btn av-dlg-ok" id="av-film-directors" style="font-size:8px;padding:4px 12px;background:rgba(160,120,220,.12);border-color:rgba(160,120,220,.3);color:#b090e0">🎬 选角导演</button>';
+  o += '<button class="av-dlg-btn av-dlg-ok" id="av-film-custom" style="font-size:8px;padding:4px 12px;background:rgba(255,120,180,.12);border-color:rgba(255,120,180,.25);color:#ff78b4">✏️ 自定义</button>';
+  o += '<button class="av-dlg-btn av-dlg-ok" id="av-film-directors" style="font-size:8px;padding:4px 12px;background:rgba(160,120,220,.12);border-color:rgba(160,120,220,.3);color:#b090e0">🎬 导演</button>';
   o += '<button class="av-dlg-btn av-dlg-ok" id="av-film-refresh" style="font-size:8px;padding:4px 12px">' + (scripts.length ? '🔄 刷新' : '✨ 生成项目') + '</button>';
   o += '</div>';
   o += '</div>';
@@ -15857,6 +16663,11 @@ function _drawFilmScripts($c) {
   /* 选角导演列表 */
   $c.find('#av-film-directors').on('click', function() {
     _showCastingDirectorsDialog();
+  });
+
+  /* 自定义影视剧本 */
+  $c.find('#av-film-custom').on('click', function() {
+    _showFilmCustomDialog($c);
   });
 
   $c.find('#av-film-refresh').on('click', async function() {
