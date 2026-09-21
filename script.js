@@ -6667,8 +6667,49 @@ function _wirePhone() {
             var _curWeek = _v('user.当前时间.周数', 1);
             var _weekKey = '第' + _curWeek + '周';
             var _allSnow = _loadSnowStories();
-            if (!_allSnow[_weekKey]) _allSnow[_weekKey] = [];
+            /* ═══ 兼容旧数据：如果有按周分组的，迁移到 _flat ═══ */
+            if (!_allSnow._flat) {
+              _allSnow._flat = [];
+              for (var _oldWeek in _allSnow) {
+                if (_oldWeek === '_flat') continue;
+                var _oldList = _allSnow[_oldWeek];
+                if (Array.isArray(_oldList)) {
+                  for (var _oi = 0; _oi < _oldList.length; _oi++) {
+                    if (!_oldList[_oi].week) _oldList[_oi].week = parseInt(_oldWeek.replace(/[^\d]/g, '')) || 1;
+                    _allSnow._flat.push(_oldList[_oi]);
+                  }
+                  delete _allSnow[_oldWeek];
+                }
+              }
+            }
+            var _allSnowFlat = _allSnow._flat;
             for (var _si = 0; _si < _snowResult.stories.length; _si++) {
+              var _st = _snowResult.stories[_si];
+              var _stTitle = _st.title || ('第' + _curWeek + '周小剧场' + (_allSnowFlat.length + 1));
+              /* ═══ 全局去重：按内容指纹判断是否已存在（跨周也查） ═══ */
+              var _stFingerprint = (_stTitle + '|' + (_st.content || '').substring(0, 80)).replace(/\s/g, '');
+              var _stDup = false;
+              for (var _di = 0; _di < _allSnowFlat.length; _di++) {
+                var _exist = _allSnowFlat[_di];
+                var _existFp = ((_exist.title || '') + '|' + (_exist.content || '').substring(0, 80)).replace(/\s/g, '');
+                if (_existFp === _stFingerprint) {
+                  _stDup = true;
+                  _exist.ts = Date.now();
+                  break;
+                }
+              }
+              if (_stDup) continue;
+              _allSnowFlat.push({
+                id: 'snow_' + Date.now().toString(36) + '_' + _si,
+                title: _stTitle,
+                content: _st.content,
+                isHtml: !!_st.isHtml,
+                week: _curWeek,
+                ts: Date.now(),
+                read: false
+              });
+            }
+            _saveSnowStories(_allSnow);
               var _st = _snowResult.stories[_si];
               var _stTitle = _st.title || ('第' + _curWeek + '周小剧场' + (_allSnow[_weekKey].length + 1));
               /* ═══ 去重：按 content 前80字 + title 判断是否已存在 ═══ */
@@ -7455,12 +7496,28 @@ function _wirePhone() {
 
       showSnowStories: function() {
         var t = _t();
-        var allSnow = _loadSnowStories();
-        var weekKeys = Object.keys(allSnow).sort(function(a, b) {
-          var na = parseInt(a.replace(/[^\d]/g, '')) || 0;
-          var nb = parseInt(b.replace(/[^\d]/g, '')) || 0;
-          return nb - na; /* 最新的周在前 */
-        });
+var allSnow = _loadSnowStories();
+        /* ═══ 兼容：如果有旧数据按周分组，合并进 flat ═══ */
+        var items = allSnow._flat || [];
+        if (!allSnow._flat) {
+          for (var _wk in allSnow) {
+            var _oldList = allSnow[_wk];
+            if (Array.isArray(_oldList)) {
+              for (var _oi2 = 0; _oi2 < _oldList.length; _oi2++) {
+                if (!_oldList[_oi2].week) _oldList[_oi2].week = parseInt(_wk.replace(/[^\d]/g, '')) || 1;
+                items.push(_oldList[_oi2]);
+              }
+            }
+          }
+        }
+        /* ═══ 按未读/已读分组，组内按时间倒序 ═══ */
+        var _unread = [], _read = [];
+        for (var _gi2 = 0; _gi2 < items.length; _gi2++) {
+          if (items[_gi2].read) _read.push(items[_gi2]);
+          else _unread.push(items[_gi2]);
+        }
+        _unread.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+        _read.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
 
         var html = '<div id="av-snow-panel" class="av-story-hist-overlay" style="z-index:10001">';
         html += '<div class="av-story-hist-header">';
@@ -7469,49 +7526,42 @@ function _wirePhone() {
         html += '</div>';
         html += '<div class="av-story-hist-body" id="av-snow-body">';
 
-        if (!weekKeys.length) {
+if (!items.length) {
           html += '<div style="text-align:center;padding:40px 16px;color:rgba(255,255,255,.35);font-size:11px;font-style:italic">还没有小剧场<br><span style="font-size:9px;opacity:.7">在剧情里出现 &lt;snow&gt;...&lt;/snow&gt; 时会自动收录</span></div>';
         } else {
-          for (var wi = 0; wi < weekKeys.length; wi++) {
-            var wk = weekKeys[wi];
-            var items = allSnow[wk] || [];
-            /* ═══ 按已读/未读分组 ═══ */
-            var _unread = [], _read = [];
-            for (var _gi = 0; _gi < items.length; _gi++) {
-              if (items[_gi].read) _read.push(items[_gi]); else _unread.push(items[_gi]);
-            }
-            _read.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
-            _unread.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
-            html += '<div style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:1px;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.08)">' + _esc(wk) + ' · 未读' + _unread.length + ' / 已读' + _read.length + '</div>';
-            for (var ii = 0; ii < _unread.length; ii++) {
-              var st = _unread[ii];
-              html += '<div class="av-snow-item" data-sid="' + _esc(st.id) + '" data-week="' + _esc(wk) + '" style="padding:10px 12px;border-radius:10px;background:rgba(255,180,220,.08);border:1px solid rgba(255,180,220,.25);margin-bottom:6px;cursor:pointer;transition:background .15s">';
+          /* ═══ 未读区 ═══ */
+          if (_unread.length) {
+            html += '<div style="font-size:10px;color:rgba(255,180,220,.7);letter-spacing:1px;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid rgba(255,180,220,.2)">🔴 未读 · ' + _unread.length + ' 篇</div>';
+            for (var _ui = 0; _ui < _unread.length; _ui++) {
+              var st = _unread[_ui];
+              html += '<div class="av-snow-item" data-sid="' + _esc(st.id) + '" style="padding:10px 12px;border-radius:10px;background:rgba(255,180,220,.08);border:1px solid rgba(255,180,220,.25);margin-bottom:6px;cursor:pointer;transition:background .15s">';
               html += '<div style="font-size:11px;font-weight:600;color:#ffb4dc;margin-bottom:3px">🔴 ' + _esc(st.title) + '</div>';
               var _preview = (st.content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().substring(0, 60);
               html += '<div style="font-size:9px;color:rgba(255,255,255,.4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(_preview) + '</div>';
-              html += '</div>';
-            }
-            /* ═══ 已读折叠 ═══ */
-            if (_read.length) {
-              var _readId = 'av-snow-read-' + wi;
-              html += '<div class="av-snow-read-toggle" data-target="' + _readId + '" style="padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
-              html += '<span style="font-size:9px;color:rgba(255,255,255,.4)">📖 已读 · ' + _read.length + ' 篇</span>';
-              html += '<span style="font-size:8px;color:rgba(255,255,255,.3)">展开 ▾</span>';
-              html += '</div>';
-              html += '<div id="' + _readId + '" style="display:none;margin-bottom:6px">';
-              for (var _ri = 0; _ri < _read.length; _ri++) {
-                var rst = _read[_ri];
-                html += '<div class="av-snow-item" data-sid="' + _esc(rst.id) + '" data-week="' + _esc(wk) + '" style="padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);margin-bottom:4px;cursor:pointer;opacity:.65">';
-                html += '<div style="font-size:10px;color:rgba(255,255,255,.55);margin-bottom:2px">' + _esc(rst.title) + '</div>';
-                var _rprev = (rst.content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().substring(0, 40);
-                html += '<div style="font-size:8px;color:rgba(255,255,255,.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(_rprev) + '</div>';
-                html += '</div>';
-              }
+              html += '<div style="font-size:8px;color:rgba(255,255,255,.25);margin-top:3px">第' + (st.week || '?') + '周抓取</div>';
               html += '</div>';
             }
           }
+          /* ═══ 已读区（折叠） ═══ */
+          if (_read.length) {
+            var _readId = 'av-snow-read-all';
+            html += '<div class="av-snow-read-toggle" data-target="' + _readId + '" style="padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);margin:12px 0 6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+            html += '<span style="font-size:10px;color:rgba(255,255,255,.5)">📖 已读 · ' + _read.length + ' 篇</span>';
+            html += '<span style="font-size:9px;color:rgba(255,255,255,.3)">展开 ▾</span>';
+            html += '</div>';
+            html += '<div id="' + _readId + '" style="display:none;margin-bottom:6px">';
+            for (var _ri2 = 0; _ri2 < _read.length; _ri2++) {
+              var rst = _read[_ri2];
+              html += '<div class="av-snow-item" data-sid="' + _esc(rst.id) + '" style="padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);margin-bottom:4px;cursor:pointer;opacity:.65">';
+              html += '<div style="font-size:10px;color:rgba(255,255,255,.55);margin-bottom:2px">' + _esc(rst.title) + '</div>';
+              var _rprev = (rst.content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().substring(0, 40);
+              html += '<div style="font-size:8px;color:rgba(255,255,255,.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(_rprev) + '</div>';
+              html += '<div style="font-size:7px;color:rgba(255,255,255,.2);margin-top:2px">第' + (rst.week || '?') + '周抓取</div>';
+              html += '</div>';
+            }
+            html += '</div>';
+          }
         }
-
         html += '</div></div>';
         $('#av-story-overlay').append(html);
 
@@ -7529,15 +7579,37 @@ function _wirePhone() {
         $('#av-snow-panel').on('click', '.av-snow-item', function(e) {
           e.stopPropagation();
           var sid = $(this).data('sid');
-          var wk = $(this).data('week');
           var data = _loadSnowStories();
-          var list = data[wk] || [];
+          /* ═══ 兼容旧数据 ═══ */
+          var list = data._flat || [];
+          if (!data._flat) {
+            for (var _wk2 in data) {
+              var _ol = data[_wk2];
+              if (Array.isArray(_ol)) {
+                for (var _oj = 0; _oj < _ol.length; _oj++) list.push(_ol[_oj]);
+              }
+            }
+          }
           var found = null;
           for (var i = 0; i < list.length; i++) { if (list[i].id === sid) { found = list[i]; break; } }
           if (found) {
-            /* ═══ 标记已读 ═══ */
+            /* ═══ 标记已读：如果新结构用 _flat，就写回 _flat ═══ */
             if (!found.read) {
               found.read = true;
+              if (data._flat) {
+                for (var _mk = 0; _mk < data._flat.length; _mk++) {
+                  if (data._flat[_mk].id === sid) { data._flat[_mk].read = true; break; }
+                }
+              } else {
+                /* 旧结构：找到对应的周再写 */
+                for (var _wk3 in data) {
+                  if (Array.isArray(data[_wk3])) {
+                    for (var _mj = 0; _mj < data[_wk3].length; _mj++) {
+                      if (data[_wk3][_mj].id === sid) { data[_wk3][_mj].read = true; break; }
+                    }
+                  }
+                }
+              }
               _saveSnowStories(data);
             }
             ScenePlayer.showSnowDetail(found);
