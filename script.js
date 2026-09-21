@@ -2909,7 +2909,7 @@ ${_presetTags.map(function(t, i){ return '剧本' + (i+1) + '：' + t.join('、'
 5. outline里段落分隔用真实换行（JSON里自动转义），禁止写成字面 \\n
 6. 只输出JSON数组：[{"title":"","tags":[],"actors":[],"synopsis":"","outline":"","reward":0,"stamina":0}]`;
     try{
-      var reply=await _callApi([{role:'system',content:'你是AV剧本生成器。只输出合法JSON数组，不要其他文字。'},{role:'user',content:prompt}],{temperature:.7,max_tokens:8000});
+      var reply=await _callApi([{role:'system',content:'你是AV剧本生成器。只输出合法JSON数组，不要其他文字。'},{role:'user',content:prompt}],{temperature:.7,max_tokens:32000});
       reply=reply.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
       var m=reply.match(/\[[\s\S]*\]/);
       if(!m)return _scrFallback(level,actors);
@@ -21310,10 +21310,10 @@ var resetItems = [
   { id: 'rankNpc', label: '📊 榜单 NPC 缓存', group: '💾 数据', app: '榜单' },
   { id: 'varietyLocal', label: '📺 综艺通告缓存', group: '💾 数据', app: '综艺' },
   { id: 'achievements', label: '🏅 成就记录', group: '💾 数据', app: '作品库·成就' },
-  { id: 'eventsAll', label: '📨 所有事件通知记录', group: '💾 数据', app: '（狗仔/黑料/官宣等）' },
-  { id: 'storyRelations', label: '💕 全部关系数据', group: '💾 数据', app: '艺人·关系网（告白/求婚/结婚/吃醋/纪念日）' }
+  { id: 'eventsAll', label: '📨 所有事件通知记录', group: '💾 数据', app: '狗仔/黑料/官宣等' },
+  { id: 'storyRelations', label: '💕 全部关系数据', group: '💾 数据', app: '艺人·关系网' }
 ];
-      var groups = ['美化', '系统', '数据'];
+      var groups = ['🎨 美化', '🔌 系统', '💬 通讯', '📱 微博', '📋 工作', '💾 数据'];
       var d = '<div class="av-dlg-h">🗑️ 选择要重置的内容</div>';
       d += '<div class="av-dlg-sub">勾选后点击确认，仅清除选中项</div>';
       /* 全选/全不选 */
@@ -21323,16 +21323,22 @@ var resetItems = [
       d += '</div>';
       d += '<div style="max-height:300px;overflow-y:auto">';
 var groups = ['🎨 美化', '🔌 系统', '💬 通讯', '📱 微博', '📋 工作', '💾 数据'];
-      for (var gi = 0; gi < groups.length; gi++) {
+for (var gi = 0; gi < groups.length; gi++) {
         var gn = groups[gi];
         var gItems = resetItems.filter(function(ri) { return ri.group === gn; });
         if (!gItems.length) continue;
-        d += '<div style="font-size:9px;color:' + t2.textMuted + ';letter-spacing:1px;margin:' + (gi > 0 ? '12px' : '0') + ' 0 6px;padding-bottom:4px;border-bottom:1px solid ' + t2.divider + '">' + _esc(gn) + '</div>';
+
+        /* ── 分组标题行（含"全选这一组"按钮）── */
+        d += '<div style="display:flex;align-items:center;justify-content:space-between;margin:' + (gi > 0 ? '12px' : '0') + ' 0 6px;padding-bottom:4px;border-bottom:1px solid ' + t2.divider + '">';
+        d += '<span style="font-size:9px;color:' + t2.textMuted + ';letter-spacing:1px">' + _esc(gn) + '</span>';
+        d += '<span class="av-rst-group-all" data-group="' + _esc(gn) + '" style="font-size:8px;color:' + t2.primary + ';cursor:pointer;padding:2px 8px;border-radius:6px;border:1px solid rgba(' + t2.primaryRgb + ',.3);user-select:none">全选</span>';
+        d += '</div>';
+
+        /* ── 该组的勾选项 ── */
         for (var ii = 0; ii < gItems.length; ii++) {
           var item = gItems[ii];
-          /* 每一行：复选框 + 标签 + 所属APP灰字 */
           d += '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:8px;transition:background .15s" onmouseover="this.style.background=\'' + t2.surfaceHover + '\'" onmouseout="this.style.background=\'transparent\'">';
-          d += '<input type="checkbox" class="av-rst-cb" data-id="' + item.id + '" style="width:16px;height:16px;accent-color:' + t2.primary + ';cursor:pointer;flex-shrink:0">';
+          d += '<input type="checkbox" class="av-rst-cb" data-id="' + item.id + '" data-group="' + _esc(gn) + '" style="width:16px;height:16px;accent-color:' + t2.primary + ';cursor:pointer;flex-shrink:0">';
           d += '<span style="font-size:10px;color:' + t2.text + ';flex:1">' + _esc(item.label) + '</span>';
           if (item.app) {
             d += '<span style="font-size:8px;color:' + t2.textMuted + '">' + _esc(item.app) + '</span>';
@@ -21345,6 +21351,30 @@ var groups = ['🎨 美化', '🔌 系统', '💬 通讯', '📱 微博', '📋 
       var w = _dialog(d);
       w.find('#av-rst-all').on('click', function() { w.find('.av-rst-cb').prop('checked', true); });
       w.find('#av-rst-none').on('click', function() { w.find('.av-rst-cb').prop('checked', false); });
+
+      /* ═══ 分组"全选 / 取消全选"按钮 ═══ */
+      w.find('.av-rst-group-all').on('click', function() {
+        var grp = $(this).data('group');
+        var $cbs = w.find('.av-rst-cb[data-group="' + grp + '"]');
+        if (!$cbs.length) return;
+        /* 判断当前是否已全选 */
+        var allchecked = true;
+        $cbs.each(function() { if (!this.checked) { allchecked = false; return false; } });
+        /* 全选 → 取消；否则 → 全选 */
+        $cbs.prop('checked', !allchecked);
+        /* 按钮文字同步 */
+        $(this).text(allchecked ? '全选' : '取消全选');
+        /* 同步全局"全选/全不选"按钮状态 */
+        var $allcbs = w.find('.av-rst-cb');
+        var anyunchecked = false;
+        $allcbs.each(function() { if (!this.checked) { anyunchecked = true; return false; } });
+        /* 可选的视觉反馈：全部勾上时高亮 #av-rst-all */
+        if (!anyunchecked) {
+          w.find('#av-rst-all').css('background', 'rgba(0,0,0,.06)');
+        } else {
+          w.find('#av-rst-all').css('background', 'transparent');
+        }
+      });
       w.find('#av-rst-cancel').on('click', function() { w.remove(); });
       w.find('#av-rst-confirm').on('click', function() {
         var selected = [];
@@ -21356,7 +21386,7 @@ var groups = ['🎨 美化', '🔌 系统', '💬 通讯', '📱 微博', '📋 
           for (var si = 0; si < selected.length; si++) {
             var sid = selected[si];
 switch(sid) {
-              /* ═══ 🎨 美化 ═══ */
+              /* ═══════════ 🎨 美化 ═══════════ */
               case 'wallpaper': _clearImg('wallpaper'); count++; break;
               case 'avatar': _clearHomeAvatar(); count++; break;
               case 'homeRight': _clearHomeRight(); count++; break;
@@ -21371,12 +21401,12 @@ switch(sid) {
               case 'fontSettings': try { localStorage.removeItem(FONT_STORAGE_KEY); } catch(e) {} count++; break;
               case 'storyColors': if (typeof ScenePlayer !== 'undefined') try { localStorage.removeItem(ScenePlayer.COLOR_KEY); } catch(e) {} count++; break;
 
-              /* ═══ 🔌 系统 ═══ */
+              /* ═══════════ 🔌 系统 ═══════════ */
               case 'apis': try { localStorage.removeItem(API_STORAGE_KEY); } catch(e) {} count++; break;
               case 'customCleanTags': try { localStorage.removeItem('av-custom-clean-tags'); } catch(e) {} count++; break;
               case 'lyricTrans': try { localStorage.removeItem(LYRIC_TRANS_CACHE_KEY); } catch(e) {} count++; break;
 
-              /* ═══ 💬 通讯 ═══ */
+              /* ═══════════ 💬 通讯 ═══════════ */
               case 'sms': try { localStorage.removeItem(SMS_STORAGE_KEY); } catch(e) {} count++; break;
               case 'friends': try { localStorage.removeItem(FRIENDS_KEY); } catch(e) {} count++; break;
               case 'fanMsgs':
@@ -21386,7 +21416,7 @@ switch(sid) {
                 } catch(e) {}
                 count++; break;
 
-              /* ═══ 📱 微博 ═══ */
+              /* ═══════════ 📱 微博 ═══════════ */
               case 'weibo':
                 try {
                   localStorage.removeItem(WEIBO_KEY);
@@ -21397,7 +21427,7 @@ switch(sid) {
                 } catch(e) {}
                 count++; break;
 
-              /* ═══ 📋 工作 ═══ */
+              /* ═══════════ 📋 工作 ═══════════ */
               case 'scripts':
                 try {
                   localStorage.removeItem(SCRIPT_CACHE_KEY);
@@ -21416,7 +21446,7 @@ switch(sid) {
                 count++; break;
               case 'snowStories': try { localStorage.removeItem(SNOW_STORIES_KEY); } catch(e) {} count++; break;
 
-              /* ═══ 💾 数据 ═══ */
+              /* ═══════════ 💾 数据 ═══════════ */
               case 'saves': try { localStorage.removeItem(SAVE_STORAGE_KEY); } catch(e) {} count++; break;
               case 'storyColorsAll':
                 try {
@@ -21444,7 +21474,6 @@ switch(sid) {
               case 'achievements': try { localStorage.removeItem(ACHIEVEMENTS_KEY); } catch(e) {} count++; break;
               case 'eventsAll':
                 try {
-                  /* 狗仔 / 黑料 / 官宣 / 吃醋 / 纪念日 / 出轨 / 求婚 / 结婚 / 怀孕 / 跳槽 等所有事件通知 */
                   var eventKeys = [
                     'av-doggy-notified', 'av-blackmat-notified',
                     'av-public-state', 'av-public-cooldown', 'av-doggy-watch',
@@ -21486,6 +21515,7 @@ switch(sid) {
                 } catch(e) {}
                 count++; break;
             }
+          }
           _ensureCss();
           if (typeof triggerSlash === 'function') triggerSlash('/echo severity=success 已重置 ' + count + ' 项');
           _render();
@@ -22208,7 +22238,19 @@ function _clearGameData() {
       setTimeout(_buildShell, 100);
     }
     /* 监听所有可能触发「聊天切换」的事件 */
-    eventOn(tavern_events.CHAT_CHANGED, _onChatSwitch);
+    eventOn(tavern_events.CHAT_CHANGED, function() {
+      $('#' + G.elIds.trigger).remove();
+      $('#' + G.elIds.overlay).remove();
+      $('#' + G.elIds.css).remove();
+      _visible = false;
+      _screen = 'home';
+      _panelPositioned = false;
+      _clearGameData();
+      /* 多次尝试重建，防止一次失败 */
+      setTimeout(function() { _buildShell(); }, 300);
+      setTimeout(function() { if (!$('#' + G.elIds.trigger).length) _buildShell(); }, 1000);
+      setTimeout(function() { if (!$('#' + G.elIds.trigger).length) _buildShell(); }, 2000);
+    });
     if (tavern_events.CHAT_CREATED) eventOn(tavern_events.CHAT_CREATED, _onChatSwitch);
   }
 
