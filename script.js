@@ -2395,7 +2395,7 @@ function _getPairType(actorName, tmpl) {
 
   /* 影视类型配置 */
   var FILM_TYPES = {
-    'tv': { name: '电视剧', icon: '📺', color: '#e05080', episodes: [12, 24, 36, 48], weekPerEp: 1, desc: '长剧集，跨周拍摄，播出周期长' },
+    'tv': { name: '电视剧', icon: '📺', color: '#e05080', episodes: [6, 12, 24], weekPerEp: 1, desc: '长剧集，跨周拍摄，播出周期长' },
     'movie': { name: '电影', icon: '🎬', color: '#c8a040', episodes: [1], weekPerEp: 2, desc: '单部，拍摄周期短，一次拍完' },
     'web': { name: '网剧', icon: '🎥', color: '#5080d0', episodes: [6, 12, 24], weekPerEp: 1, desc: '中等长度，平台播出' },
     'other': { name: '其他', icon: '📹', color: '#808080', episodes: [1], weekPerEp: 1, desc: '纪录片 / 综艺大电影 / 微电影' }
@@ -6611,7 +6611,12 @@ function _wirePhone() {
             /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
             /* ── 你自己遇到的额外标签，往这里加 ── */
             'gossip',
-            'electric'
+            'electric',
+            'case_file',
+            'electric',
+            'title',
+            'Vol',
+            'vol'
           ];
           SYS_TAGS = _getAllSystemTags(SYS_TAGS);
           for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
@@ -6632,33 +6637,27 @@ function _wirePhone() {
                 new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*$', 'gi'),
                 ''
               );
-            }
+            }   /* ← 补上这个右大括号 */
+            /* 4. 孤儿闭合标签（前面没有开始标签，比如 </case_file>、</electric>） */
+            text = text.replace(
+              new RegExp('<\\/' + tag + '(?:\\s[^>]*)?>', 'gi'),
+              ''
+            );
           }
-          /* 4. HTML 注释 <!-- ... --> 也一起清掉 */
+          /* 5. HTML 注释 <!-- ... -->（多行 / 单行都要清） */
           text = text.replace(/<!--[\s\S]*?-->/g, '');
-          /* 5. ::: 格式块 ::: ... ::: 一起清掉 */
+          /* 6. ::: 格式块 ::: ... ::: 一起清掉 */
           text = text.replace(/:::[\s\S]*?:::/g, '');
+          /* 7. 通用兜底：清掉所有 HTML 风格的闭合标签（含自定义标签） */
+          text = text.replace(/<\/[a-zA-Z_][a-zA-Z0-9_\-]*>/g, '');
+          /* 8. 通用兜底：清掉 [title]xxx[/title] 之类的方括号元信息 */
+          text = text.replace(/\[title\][\s\S]*?\[\/title\]/gi, '');
+          /* 9. 通用兜底：清掉独立成行的 ## xxx 元信息标题 */
+          text = text.split('\n').filter(function(line) {
+            return !/^\s*##\s*(Vol\.|第\s*\d+\s*(章|卷|节)|顺序检查|执行检查|检查清单)/i.test(line);
+          }).join('\n');
         })();
-
-        if (!text) return [];
-        text = text.replace(/^[\s\S]*<\/(?:think|thinking)>/i, '').trim();
-        text = text.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi, '').trim();
-        text = text.replace(/<StatusPlaceHolderImpl\s*\/?>/gi, '').trim();
-        text = text.replace(/:::[\s\S]*?:::/g, '').trim();
-        /* ═══ 剔除 HTML 注释（含 draft 草稿、合规扫描等） ═══ */
-        text = text.replace(/<!--[\s\S]*?-->/g, '').trim();
-        /* ═══ 剔除 <gossip> 板块 ═══ */
-        text = text.replace(/<gossip>[\s\S]*?<\/gossip>/gi, '').trim();
-        /* ═══ 剔除 <disclaimer> 合规声明（AI 生成时常见） ═══ */
-        text = text.replace(/<disclaimer>[\s\S]*?<\/disclaimer>/gi, '').trim();
-        /* ═══ 剔除 <draft> 草稿块（如果 AI 生成） ═══ */
-        text = text.replace(/<draft>[\s\S]*?<\/draft>/gi, '').trim();
-        /* ═══ 兜底：未闭合的 <disclaimer> 从开头删到结尾 ═══ */
-        if (/<disclaimer>/i.test(text)) {
-          text = text.replace(/<disclaimer>[\s\S]*$/i, '').trim();
-        }
-        if (!text) return [];
-
+        
         /* ═══ 抓取小剧场（必须在 <content> 提取之前！） ═══ */
         try {
           var _snowResult = _extractSnowStories(text);
@@ -6713,9 +6712,21 @@ function _wirePhone() {
 } catch(e) { console.warn('[Snow] 抓取失败:', e); }
 
 /* ═══ 再提取 <content> ═══ */
-        var contentMatch = text.match(/<content>([\s\S]*?)<\/content>/i);
-        if (contentMatch) { text = contentMatch[1].trim(); }
-        else { text = text.replace(/<\/?content>/gi, '').trim(); }
+        /* ═══ 优先提取最外层 <content> 块（用最后一个 </content> 做结束） ═══ */
+        var _contentStart = text.search(/<content[^>]*>/i);
+        if (_contentStart >= 0) {
+          var _contentEnd = text.toLowerCase().lastIndexOf('</content>');
+          if (_contentEnd > _contentStart) {
+            var _afterOpen = text.indexOf('>', _contentStart) + 1;
+            text = text.substring(_afterOpen, _contentEnd).trim();
+          } else {
+            /* 没闭合：从 <content> 后面全部当正文 */
+            var _afterOpen2 = text.indexOf('>', _contentStart) + 1;
+            text = text.substring(_afterOpen2).trim();
+          }
+        } else {
+          text = text.replace(/<\/?content>/gi, '').trim();
+        }
         if (!text) return [];
 
         var segments = [];
@@ -7026,29 +7037,36 @@ function _wirePhone() {
             e.stopPropagation();
             var cs = _getCurScr();
             if (!cs) return;
-            /* ═══ 电视剧：集数没拍完，不能下本 ═══ */
-            if (cs.filmType === 'tv' || cs.filmType === 'web') {
-              var _curE = cs.currentEpisode || 1;
-              var _totE = cs.totalEpisodes || cs.episodes || 1;
-              if (_curE < _totE) {
-                if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 还有 ' + (_totE - _curE) + ' 集没拍完，不能下本');
-                return;
-              }
+            /* ═══ 计算拍摄进度与时长 ═══ */
+            var _isEpisodic = (cs.filmType === 'tv' || cs.filmType === 'web');
+            var _curE = cs.currentEpisode || 1;
+            var _totE = cs.totalEpisodes || cs.episodes || 1;
+            var _weekPerEp = (FILM_TYPES[cs.filmType] || {}).weekPerEp || 1;
+            var _shotEpisodes = _isEpisodic ? _curE : 1;
+            var _days = _shotEpisodes * _weekPerEp * 7;
+            var _finalReward = cs.reward;
+            if (_isEpisodic && _curE < _totE) {
+              _finalReward = Math.round(cs.reward * (_curE / _totE));
             }
             showConfirmModal2('确定结束「' + _esc(cs.title) + '」的拍摄？', function() {
               self.close();
-              /* ═══ AV 下本：登记播出（热度系统） ═══ */
+              /* ═══ 登记播出（热度系统） ═══ */
               try {
                 var _curWeek = _v('user.当前时间.周数', 1);
                 var _regScr = JSON.parse(JSON.stringify(cs));
                 _regScr.filmType = _regScr.filmType || 'av';
                 _regScr.filmTypeName = _regScr.filmTypeName || 'AV';
                 _registerRelease(_regScr, 'B', _curWeek);
-              } catch(e) { console.warn('[AV登记] 失败:', e); }
+              } catch(e) { console.warn('[下本登记] 失败:', e); }
               _setCurScr(null);
               if (typeof triggerSlash === 'function') {
                 triggerSlash('/setentryfield file="' + SCRIPT_WB_NAME + '" uid=' + SCRIPT_WB_UID + ' field=content （空）');
-                triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"AV"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
+                if (_isEpisodic) {
+                  var _epNote = (_curE < _totE) ? ('中途下本，已拍摄' + _curE + '/' + _totE + '集') : ('全剧拍摄完成，共' + _totE + '集');
+                  triggerSlash('/send 玩家下本，' + (cs.filmTypeName || '电视剧') + '已拍摄完成，拍摄时长为' + _days + '天。剧本：「' + cs.title + '」，' + _epNote + '，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请按已拍集数比例结算报酬' + _finalReward + '金币（原始总报酬' + cs.reward + '），并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (cs.filmTypeName || '电视剧') + '"、报酬、完成日期、评价、评级、标签、导演、角色、集数进度） | /trigger');
+                } else {
+                  triggerSlash('/send 玩家下本，拍摄完成，拍摄时长为' + _days + '天。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + _finalReward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (cs.filmTypeName || 'AV') + '"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
+                }
               }
               _screen = 'scripts'; _render();
             });
@@ -7982,10 +8000,29 @@ $('#av-scene-reopen').on('click', function() {
         var cs = _getCurScr();
         if (!cs) return;
         showConfirmModal2('确定结束「' + _esc(cs.title) + '」的拍摄？', function() {
+          /* ═══ 中途下本：计算已拍集数和拍摄时长 ═══ */
+          var _isEpisodic = (cs.filmType === 'tv' || cs.filmType === 'web');
+          var _curE = cs.currentEpisode || 1;
+          var _totE = cs.totalEpisodes || cs.episodes || 1;
+          var _weekPerEp = (FILM_TYPES[cs.filmType] || {}).weekPerEp || 1;
+          var _shotEpisodes = _isEpisodic ? _curE : 1;
+          var _days = _shotEpisodes * _weekPerEp * 7;
+          var _finishNote = '';
+          if (_isEpisodic && _curE < _totE) {
+            _finishNote = '（中途下本：已拍摄 ' + _curE + '/' + _totE + ' 集，拍摄时长 ' + _days + ' 天）';
+          } else if (_isEpisodic) {
+            _finishNote = '（全剧拍摄完成：共 ' + _totE + ' 集，拍摄时长 ' + _days + ' 天）';
+          } else {
+            _finishNote = '（拍摄完成，拍摄时长 ' + _days + ' 天）';
+          }
           _setCurScr(null);
           if (typeof triggerSlash === 'function') {
             triggerSlash('/setentryfield file="' + SCRIPT_WB_NAME + '" uid=' + SCRIPT_WB_UID + ' field=content （空）');
-            triggerSlash('/send 拍摄结束，我下本了。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"AV"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
+            if (_isEpisodic) {
+              triggerSlash('/send 玩家下本，' + (cs.filmTypeName || '电视剧') + '已拍摄完成，拍摄时长为' + _days + '天。剧本：「' + cs.title + '」，已拍' + _curE + '/' + _totE + '集，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币（按已拍集数比例结算），并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (cs.filmTypeName || '影视') + '"、报酬、完成日期、评价、评级、标签、导演、角色、集数进度） | /trigger');
+            } else {
+              triggerSlash('/send 玩家下本，拍摄完成，拍摄时长为' + _days + '天。剧本：「' + cs.title + '」，标签：' + cs.tags.join('、') + '，合作艺人：' + cs.actors.join('、') + '。请结算报酬' + cs.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (cs.filmTypeName || 'AV') + '"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
+            }
           }
           _screen = 'scripts'; _render();
         });
@@ -15456,17 +15493,20 @@ function _drawScriptMarket($c) {
         var w = _dialog('<div class="av-dlg-h">📋 确认下本</div><div style="font-size:10px;color:' + t.textDim + ';margin:8px 0;line-height:1.6">确定结束「' + _esc(curScr.title) + '」的拍摄？<br>AI将根据拍摄表现评分，评价影响名气和艺人好感。</div><div class="av-dlg-actions"><button class="av-dlg-btn av-dlg-cancel" id="av-fin-no">取消</button><button class="av-dlg-btn av-dlg-ok" id="av-fin-yes">下本</button></div>');
         w.find('#av-fin-no').on('click', function () { w.remove(); });
         w.find('#av-fin-yes').on('click', function () {
-          /* ═══ 电视剧：集数没拍完，不能下本 ═══ */
-          if (curScr.filmType === 'tv' || curScr.filmType === 'web') {
-            var _curE2 = curScr.currentEpisode || 1;
-            var _totE2 = curScr.totalEpisodes || curScr.episodes || 1;
-            if (_curE2 < _totE2) {
-              if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 还有 ' + (_totE2 - _curE2) + ' 集没拍完，不能下本');
-              return;
-            }
+          /* ═══ 计算拍摄进度与时长 ═══ */
+          var _isEpisodic = (curScr.filmType === 'tv' || curScr.filmType === 'web');
+          var _curE2 = curScr.currentEpisode || 1;
+          var _totE2 = curScr.totalEpisodes || curScr.episodes || 1;
+          var _weekPerEp = (FILM_TYPES[curScr.filmType] || {}).weekPerEp || 1;
+          var _shotEpisodes = _isEpisodic ? _curE2 : 1;
+          var _days = _shotEpisodes * _weekPerEp * 7;
+          /* ═══ 计算按比例结算的报酬（中途下本按已拍集数折算） ═══ */
+          var _finalReward = curScr.reward;
+          if (_isEpisodic && _curE2 < _totE2) {
+            _finalReward = Math.round(curScr.reward * (_curE2 / _totE2));
           }
           w.remove();
-          /* ═══ AV / 短视频下本：登记播出（热度系统） ═══ */
+          /* ═══ 登记播出（热度系统） ═══ */
           try {
             var _curWeek2 = _v('user.当前时间.周数', 1);
             var _regScr2 = JSON.parse(JSON.stringify(curScr));
@@ -15483,11 +15523,15 @@ function _drawScriptMarket($c) {
           if (typeof triggerSlash === 'function') triggerSlash('/setentryfield file="' + SCRIPT_WB_NAME + '" uid=' + SCRIPT_WB_UID + ' field=content （空）');
           if (typeof triggerSlash === 'function') {
             var _isShort = curScr.scriptType === 'short';
-            if (_isShort) {
+            if (_isEpisodic) {
+              /* ═══ 电视剧 / 网剧：发送"玩家下本，电视剧已拍摄完成，拍摄时长为xx天" ═══ */
+              var _epNote = (_curE2 < _totE2) ? ('中途下本，已拍摄' + _curE2 + '/' + _totE2 + '集') : ('全剧拍摄完成，共' + _totE2 + '集');
+              triggerSlash('/send 玩家下本，' + (curScr.filmTypeName || '电视剧') + '已拍摄完成，拍摄时长为' + _days + '天。剧本：「' + curScr.title + '」，' + _epNote + '，标签：' + curScr.tags.join('、') + '，合作艺人：' + curScr.actors.join('、') + '。请按已拍集数比例结算报酬' + _finalReward + '金币（原始总报酬' + curScr.reward + '），并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (curScr.filmTypeName || '电视剧') + '"、报酬、完成日期、评价、评级、标签、导演、角色、集数进度） | /trigger');
+            } else if (_isShort) {
               var _roleNote = '（角色：' + (curScr.role || '女主') + '）';
-              triggerSlash('/send 拍摄结束，我下本了。剧本：「' + curScr.title + '」' + _roleNote + '，标签：' + curScr.tags.join('、') + '，搭戏艺人：' + curScr.actors.join('、') + '。请结算报酬' + curScr.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档）。【短视频结算】人气涨得快、名气涨得慢。女主：人气+多、名气+中；女配：报酬-30%、人气+中、名气+少；炮灰：报酬-60%、人气+少、名气+极少。如果是靠关系拿的女主，人气+多但名气+少、八卦值+多 | /trigger');
+              triggerSlash('/send 玩家下本，短视频已拍摄完成，拍摄时长为' + _days + '天。剧本：「' + curScr.title + '」' + _roleNote + '，标签：' + curScr.tags.join('、') + '，搭戏艺人：' + curScr.actors.join('、') + '。请结算报酬' + _finalReward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档）。【短视频结算】人气涨得快、名气涨得慢。女主：人气+多、名气+中；女配：报酬-30%、人气+中、名气+少；炮灰：报酬-60%、人气+少、名气+极少。如果是靠关系拿的女主，人气+多但名气+少、八卦值+多 | /trigger');
             } else {
-              triggerSlash('/send 拍摄结束，我下本了。剧本：「' + curScr.title + '」，标签：' + curScr.tags.join('、') + '，合作艺人：' + curScr.actors.join('、') + '。请结算报酬' + curScr.reward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填\"AV\"、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
+              triggerSlash('/send 玩家下本，拍摄完成，拍摄时长为' + _days + '天。剧本：「' + curScr.title + '」，标签：' + curScr.tags.join('、') + '，合作艺人：' + curScr.actors.join('、') + '。请结算报酬' + _finalReward + '金币，并根据拍摄过程给出评价（S/A/B/C/D五档），评价影响名气变化和合作艺人好感度变化。S档名气+10好感+15，A档名气+6好感+10，B档名气+3好感+5，C档名气+1好感+2，D档名气-2好感-5。同时在 user.拍摄记录 里插入一条记录（ID格式：拍摄_周数_序号，字段：剧本名、合作艺人、类型填"' + (curScr.filmTypeName || 'AV') + '、报酬、完成日期、评价、评级、标签、导演、角色） | /trigger');
             }
           }
           _drawScripts($c);
@@ -21836,7 +21880,12 @@ switch(sid) {
             /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
             /* ── 你自己遇到的额外标签，往这里加 ── */
             'gossip',
-            'electric'
+            'electric',
+            'case_file',
+            'electric',
+            'title',
+            'Vol',
+            'vol'
           ];
           SYS_TAGS = _getAllSystemTags(SYS_TAGS);
           for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
@@ -21858,13 +21907,26 @@ switch(sid) {
                 ''
               );
             }
+            /* 4. 孤儿闭合标签（前面没有开始标签，比如 </case_file>、</electric>） */
+            text = text.replace(
+              new RegExp('<\\/' + tag + '(?:\\s[^>]*)?>', 'gi'),
+              ''
+            );
           }
-          /* 4. HTML 注释 <!-- ... --> 也一起清掉 */
+          /* 5. HTML 注释 <!-- ... -->（多行 / 单行都要清） */
           text = text.replace(/<!--[\s\S]*?-->/g, '');
-          /* 5. ::: 格式块 ::: ... ::: 一起清掉 */
+          /* 6. ::: 格式块 ::: ... ::: 一起清掉 */
           text = text.replace(/:::[\s\S]*?:::/g, '');
+          /* 7. 通用兜底：清掉所有 HTML 风格的闭合标签（含自定义标签） */
+          text = text.replace(/<\/[a-zA-Z_][a-zA-Z0-9_\-]*>/g, '');
+          /* 8. 通用兜底：清掉 [title]xxx[/title] 之类的方括号元信息 */
+          text = text.replace(/\[title\][\s\S]*?\[\/title\]/gi, '');
+          /* 9. 通用兜底：清掉独立成行的 ## xxx 元信息标题 */
+          text = text.split('\n').filter(function(line) {
+            return !/^\s*##\s*(Vol\.|第\s*\d+\s*(章|卷|节)|顺序检查|执行检查|检查清单)/i.test(line);
+          }).join('\n');
         })();
-
+        
         if (!text) return [];
         text = text.replace(/^[\s\S]*<\/(?:think|thinking)>/i, '').trim();
         text = text.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi, '').trim();
@@ -21876,9 +21938,21 @@ switch(sid) {
         if (/<disclaimer>/i.test(text)) {
           text = text.replace(/<disclaimer>[\s\S]*$/i, '').trim();
         }
-        var contentMatch = text.match(/<content>([\s\S]*?)<\/content>/i);
-        if (contentMatch) { text = contentMatch[1].trim(); }
-        else { text = text.replace(/<\/?content>/gi, '').trim(); }
+        /* ═══ 优先提取最外层 <content> 块（用最后一个 </content> 做结束） ═══ */
+        var _contentStart = text.search(/<content[^>]*>/i);
+        if (_contentStart >= 0) {
+          var _contentEnd = text.toLowerCase().lastIndexOf('</content>');
+          if (_contentEnd > _contentStart) {
+            var _afterOpen = text.indexOf('>', _contentStart) + 1;
+            text = text.substring(_afterOpen, _contentEnd).trim();
+          } else {
+            /* 没闭合：从 <content> 后面全部当正文 */
+            var _afterOpen2 = text.indexOf('>', _contentStart) + 1;
+            text = text.substring(_afterOpen2).trim();
+          }
+        } else {
+          text = text.replace(/<\/?content>/gi, '').trim();
+        }
         if (!text) return [];
 
         var segments = [];
