@@ -3670,12 +3670,48 @@ var _BOSSES = {
     d += '<div class="av-dlg-actions"><button class="av-dlg-btn av-dlg-cancel" id="av-bp-close">取消</button></div>';
     var w = _dialog(d);
     w.find('#av-bp-close').on('click', function() { w.remove(); });
-    w.find('.av-boss-pick').on('click', function() {
+    w.find('.av-boss-pick').on('click', async function() {
       var bossName = $(this).data('boss');
       var bossCompany = $(this).data('company');
       var bossRisk = $(this).data('risk');
       w.remove();
-      if (typeof triggerSlash === 'function') triggerSlash('/send 我前往潮汐湾高级会所' + (cost ? '，花费' + cost + '金币包下私密包厢' : '') + '，秘密约见' + bossCompany + '的老板' + bossName + '进行交易，试图用特殊方式换取外部资源。⚠️ 此行为有概率触发被八卦记者发现并登报的风险（风险等级：' + bossRisk + '），如果被登报，请让我面临降薪或赔偿违约金的惩罚。请判定这次秘密会面是否被发现。 | /trigger');
+
+      /* 显示等待提示 */
+      if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info ' + bossName + ' 正在准备剧本...');
+
+      /* ═══ 调用异步生成（内部优先 AI，兜底模板） ═══ */
+      var _r = await _genBossScriptAsync(bossName, bossCompany, 'other');
+
+      if (!_r || !_r.ok) {
+        if (typeof triggerSlash === 'function') triggerSlash('/echo severity=error 剧本生成失败，请重试');
+        return;
+      }
+
+      /* ═══ echo 提示 ═══ */
+      if (typeof triggerSlash === 'function') {
+        triggerSlash('/echo severity=success ' + bossName + ' 给了你一个剧本《' + _r.title + '》，报酬' + _r.reward + '，' + _r.shootDay + _r.shootSlot + '在' + _r.place + '开拍，已加入接本列表' + (_r.aiGenerated ? '（AI生成）' : ''));
+      }
+
+      /* ═══ 发 /send 给 AI，让 AI 只负责演绎 ═══ */
+      if (typeof triggerSlash === 'function') {
+        var _curWeek = _v('user.当前时间.周数', 1);
+        var _msg = '我前往潮汐湾高级会所' + (cost ? '，花费' + cost + '金币包下私密包厢' : '') + '，秘密约见' + bossCompany + '的老板' + bossName + '进行交易。\n';
+        _msg += '【重要 · 剧本已生成，你只需要演绎】\n';
+        _msg += bossName + '已经把剧本《' + _r.title + '》给到我了。\n';
+        _msg += '剧本已经写入接本APP的缓存，我随时可以去接。\n';
+        _msg += '拍摄地点：' + _r.place + '，开拍时间：' + _r.shootDay + _r.shootSlot + '。\n\n';
+        _msg += '【正文要求】\n';
+        _msg += '1. 演绎这次秘密会面的全过程\n';
+        _msg += '2. 写出' + bossName + '把剧本递给我的动作、对剧本的介绍\n';
+        _msg += '3. 明确交代拍摄地点和时间\n';
+        _msg += '4. 【禁止】禁止在正文里重新定义剧本内容，剧本已经生成好了，你只需要"念"出来\n';
+        _msg += '5. 【禁止】禁止输出 <av_script> 块，剧本已经在缓存里了\n\n';
+        _msg += '【UpdateVariable 要求】\n';
+        _msg += '在 <UpdateVariable> 里，往 user.行程表 插入一条拍摄行程：\n';
+        _msg += '{"op":"insert","path":"/user/行程表/行程_' + _curWeek + '_boss","value":{"标题":"' + _r.title + '","类型":"拍摄","周数":' + _curWeek + ',"星期":"' + _r.shootDay + '","时段":"' + _r.shootSlot + '","地点":"' + _r.place + '","相关人物":["' + (_r.actor || '') + '"],"剧本ID":"' + _r.id + '","状态":"待进行"}}\n\n';
+        _msg += '⚠️ 此行为有概率触发被八卦记者发现并登报的风险（风险等级：' + bossRisk + '），如果被登报，请让我面临降薪或赔偿违约金的惩罚。请判定这次秘密会面是否被发现。 | /trigger';
+        triggerSlash('/send ' + _msg);
+      }
     });
   }
 
@@ -3717,6 +3753,761 @@ var _BOSSES = {
       }
     }
     return '未知';
+  }
+
+  /* ═══════════════════════════════════════
+     🎁 资源落地工具：老板特供剧本（同步版，用模板）
+     注意：这是兜底版本，不用 AI，直接生成模板剧本。
+     想用 AI 生成真剧本，用下面 _genBossScriptAsync。
+     ═══════════════════════════════════════ */
+  function _genBossScript(bossName, bossCompany, mode) {
+    try {
+      if (!bossName) return { ok: false };
+
+      var _lvl = _v('user.等级', 'F级');
+      var _li = LEVEL_ORDER.indexOf(_lvl);
+      var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+      var _bonus = (_baseRewards[_li] || 8000) * 2;
+
+      var _coActors = (COMPANIES[bossCompany] && COMPANIES[bossCompany].actors) || [];
+      var _pickActor = _coActors.length
+        ? _coActors[Math.floor(Math.random() * _coActors.length)]
+        : '';
+
+      var _studioPool = {
+        '星野事务所': ['月见寮', '白鹭馆'],
+        '远洋经纪':   ['塞纳片场', '潮音别墅'],
+        '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+        '山海经纪':   ['白鹭馆', '塞纳片场'],
+        '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+      };
+      var _studios = _studioPool[bossCompany] || ['白鹭馆'];
+      var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+      var _curWeek = _v('user.当前时间.周数', 1);
+      var _curDay = _v('user.当前时间.星期', '星期一');
+      var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+      var _shootDay = _dayOrder[(_dayOrder.indexOf(_curDay) + 1) % 7];
+
+      var _title = bossName + (mode === 'self' ? '的内部本' : '的私活');
+      var _synopsis, _outline;
+      if (mode === 'self') {
+        _synopsis = '这是' + bossName + '在公司内部给你留的资源，本子质量不错，报酬高于市场价。';
+        _outline = '场景：' + _place + '。\n角色关系：你和' + bossName + '之间有某种默契。\n情节走向：\n1.【通知】' + bossName + '让人把剧本送到你手上。\n2.【读本】你翻看剧本，发现质量确实好。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】' + bossName + '会"看"你的表现。\n拍摄重点：这是一次"投资"，你要给出足够的回报。';
+      } else {
+        _synopsis = '这是' + bossName + '私下给你的资源，剧本简单，但报酬是市场价的两倍。';
+        _outline = '场景：私密包厢。\n角色关系：你和' + bossName + '达成了某种默契。\n情节走向：\n1.【会面】' + bossName + '把剧本推到你面前。\n2.【条件】' + bossName + '提了一个不写在合同里的要求。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】' + bossName + '会"看"你的表现。\n拍摄重点：镜头外的东西比镜头内的多。';
+      }
+
+      var _scr = {
+        id: 'boss_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: _title,
+        tags: ['剧情', '温柔'],
+        actors: _pickActor ? [_pickActor] : [],
+        pairType: 'GB',
+        pairTypes: ['GB'],
+        synopsis: _synopsis,
+        outline: _outline,
+        reward: _bonus,
+        stamina: 30,
+        scriptType: 'av',
+        fromBoss: bossName,
+        location: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        custom: true
+      };
+
+      var _cache = _loadScrCache();
+      _cache.unshift(_scr);
+      _saveScrCache(_cache);
+
+      return {
+        ok: true,
+        id: _scr.id,
+        title: _title,
+        reward: _bonus,
+        place: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        actor: _pickActor
+      };
+    } catch(e) {
+      console.warn('[资源落地] 生成老板剧本失败:', e);
+      return { ok: false };
+    }
+  }
+
+  /* ═══════════════════════════════════════
+     🎁 资源落地工具：经纪人推荐剧本（同步版，用模板）
+     ═══════════════════════════════════════ */
+  function _genManagerScript(mgrName, myCo, mgrFavor) {
+    try {
+      if (!mgrName || mgrName === '待选择') return { ok: false };
+
+      var _lvl = _v('user.等级', 'F级');
+      var _li = LEVEL_ORDER.indexOf(_lvl);
+      var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+      var _base = _baseRewards[_li] || 8000;
+      var _favorBoost = 1 + Math.min(mgrFavor, 100) / 200;
+      var _reward = Math.round(_base * 1.5 * _favorBoost);
+
+      var _coActors = (COMPANIES[myCo] && COMPANIES[myCo].actors) || [];
+      var _pickActor = _coActors.length
+        ? _coActors[Math.floor(Math.random() * _coActors.length)]
+        : '';
+
+      var _studioPool = {
+        '星野事务所': ['月见寮', '白鹭馆'],
+        '远洋经纪':   ['塞纳片场', '潮音别墅'],
+        '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+        '山海经纪':   ['白鹭馆', '塞纳片场'],
+        '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+      };
+      var _studios = _studioPool[myCo] || ['白鹭馆'];
+      var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+      var _curWeek = _v('user.当前时间.周数', 1);
+      var _curDay = _v('user.当前时间.星期', '星期一');
+      var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+      var _shootDay = _dayOrder[(_dayOrder.indexOf(_curDay) + 2) % 7];
+
+      var _types = [
+        { key: 'tv', name: '电视剧' },
+        { key: 'web', name: '网剧' },
+        { key: 'movie', name: '电影' },
+        { key: 'av', name: 'AV' }
+      ];
+      var _pickType = _types[Math.floor(Math.random() * _types.length)];
+      var _isFilm = _pickType.key !== 'av';
+
+      var _title = mgrName + '推荐 · ' + _pickType.name + '项目';
+      var _synopsis = '这是' + mgrName + '为你挑选的' + _pickType.name + '项目，质量不错，报酬高于市场价。';
+      var _outline = '场景：' + _place + '。\n角色关系：' + mgrName + '作为你的经纪人亲自为你挑了本子。\n情节走向：\n1.【递本】' + mgrName + '把剧本递给你，介绍剧情。\n2.【讨论】你们讨论角色、搭档、档期。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】结算。\n拍摄重点：把握这次机会。';
+
+      var _scr = {
+        id: 'mgr_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: _title,
+        filmType: _pickType.key,
+        filmTypeName: _pickType.name,
+        tags: ['剧情'],
+        actors: _pickActor ? [_pickActor] : [],
+        pairType: 'GB',
+        pairTypes: ['GB'],
+        synopsis: _synopsis,
+        outline: _outline,
+        reward: _reward,
+        stamina: 25 + Math.floor(Math.random() * 15),
+        scriptType: _isFilm ? 'film' : 'av',
+        fromManager: mgrName,
+        location: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        custom: true
+      };
+
+      if (_isFilm) {
+        _scr.auditioned = true;
+        _scr.passed = true;
+        _scr.castingDirector = '（经纪人推荐，免试镜）';
+        var _filmCache = _loadFilmCache();
+        _filmCache.unshift(_scr);
+        _saveFilmCache(_filmCache);
+      } else {
+        var _avCache = _loadScrCache();
+        _avCache.unshift(_scr);
+        _saveScrCache(_avCache);
+      }
+
+      return {
+        ok: true,
+        id: _scr.id,
+        title: _title,
+        reward: _reward,
+        place: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        actor: _pickActor,
+        filmTypeName: _pickType.name
+      };
+    } catch(e) {
+      console.warn('[资源落地] 生成经纪人剧本失败:', e);
+      return { ok: false };
+    }
+  }
+
+  /* ═══════════════════════════════════════
+     📥 解析 AI 输出的 <av_script> 块，写入缓存
+     ═══════════════════════════════════════ */
+  function _parseAvScriptBlocks(text) {
+    if (!text) return 0;
+    var re = /<av_script>\s*(\{[\s\S]*?\})\s*<\/av_script>/gi;
+    var m;
+    var added = 0;
+    var avCache = _loadScrCache();
+    var filmCache = typeof _loadFilmCache === 'function' ? _loadFilmCache() : [];
+
+    /* 收集现有标题用于去重 */
+    var existTitles = {};
+    for (var i = 0; i < avCache.length; i++) {
+      if (avCache[i] && avCache[i].title) existTitles[avCache[i].title] = true;
+    }
+    for (var j = 0; j < filmCache.length; j++) {
+      if (filmCache[j] && filmCache[j].title) existTitles[filmCache[j].title] = true;
+    }
+
+    while ((m = re.exec(text)) !== null) {
+      var raw = (m[1] || '').trim();
+      if (!raw) continue;
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+      var obj = null;
+      try { obj = JSON.parse(raw); } catch(e) {
+        try { obj = JSON.parse(raw.replace(/,(\s*[\]}])/g, '$1')); } catch(e2) {}
+      }
+      if (!obj || !obj.title) continue;
+
+      /* 已存在同名的？跳过（避免和模板版重复） */
+      if (existTitles[obj.title]) {
+        console.log('[av_script] 跳过重复标题:', obj.title);
+        continue;
+      }
+
+      var scr = {
+        id: 'ai_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: obj.title,
+        scriptType: obj.scriptType || 'av',
+        filmType: obj.filmType || (obj.scriptType === 'film' ? 'movie' : ''),
+        filmTypeName: obj.filmTypeName || '',
+        tags: obj.tags || ['剧情'],
+        actors: obj.actors || [],
+        pairType: obj.pairType || 'GB',
+        pairTypes: [obj.pairType || 'GB'],
+        synopsis: obj.synopsis || '',
+        outline: obj.outline || '',
+        reward: obj.reward || 20000,
+        stamina: obj.stamina || 30,
+        location: obj.location || '',
+        shootDay: obj.shootDay || '',
+        shootSlot: obj.shootSlot || '',
+        custom: true,
+        fromAI: true
+      };
+
+      if (scr.scriptType === 'film') {
+        scr.auditioned = true;
+        scr.passed = true;
+        scr.castingDirector = obj.castingDirector || '（AI生成）';
+        filmCache.unshift(scr);
+      } else {
+        avCache.unshift(scr);
+      }
+      existTitles[obj.title] = true;
+      added++;
+
+      if (typeof triggerSlash === 'function') {
+        triggerSlash('/echo severity=success 剧本《' + scr.title + '》已收录到接本列表（AI生成）');
+      }
+    }
+
+    if (added > 0) {
+      _saveScrCache(avCache);
+      if (typeof _saveFilmCache === 'function') _saveFilmCache(filmCache);
+    }
+    return added;
+  }
+
+  /* ═══════════════════════════════════════
+     🎁 资源落地：用辅助 API 生成真实剧本
+     ─────────────────────────────────────
+     优先调辅助 API 生成高质量剧本（有真实大纲）。
+     没配 API 或 API 失败时，退回模板剧本（空壳，但不会卡住）。
+     ═══════════════════════════════════════ */
+
+  /* 通用：根据场景调辅助 API 生成一个剧本 */
+  async function _genScriptWithApi(opts) {
+    var api = _getAuxApi();
+    if (!api || !api.endpoint || !api.key) return null;
+
+    var _pg = _getPlayerGender() || '女';
+    var _lvl = _v('user.等级', 'F级');
+    var _li = LEVEL_ORDER.indexOf(_lvl);
+    var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+    var _baseReward = _baseRewards[_li] || 8000;
+
+    var _sceneDesc = opts.sceneDesc || '老板私下给的资源';
+    var _coActors = opts.actors || [];
+    var _actorHint = _coActors.length ? '可选合作艺人：' + _coActors.join('、') : '';
+    var _scriptType = opts.scriptType || 'av';
+
+    var _prompt = '';
+    _prompt += '生成一个' + (_scriptType === 'film' ? '影视' : 'AV') + '剧本。\n';
+    _prompt += '场景背景：' + _sceneDesc + '\n';
+    _prompt += '玩家性别：' + _pg + '性，等级：' + _lvl + '\n';
+    if (_actorHint) _prompt += _actorHint + '\n';
+    _prompt += '报酬基准：' + _baseReward + ' 金币\n\n';
+
+    _prompt += '【强制输出格式】只输出一个 JSON 对象，不要任何其他文字，不要 markdown 代码块：\n';
+    _prompt += '{\n';
+    _prompt += '  "title": "剧本名（2-8字，像真实片名，禁止用「试镜」「XX推荐」这类词）",\n';
+    _prompt += '  "tags": ["标签1","标签2"],\n';
+    _prompt += '  "actors": ["合作艺人名"],\n';
+    _prompt += '  "pairType": "BG或GB或BL或GL",\n';
+    _prompt += '  "synopsis": "简介40-80字，有画面感",\n';
+    _prompt += '  "outline": "大纲200-300字，格式：场景：…\\n角色关系：…\\n情节走向：\\n1.【节点名】…\\n2.【节点名】…\\n3.【节点名】…\\n4.【节点名】…\\n5.【节点名】…\\n拍摄重点：…",\n';
+    _prompt += '  "reward": ' + _baseReward + ',\n';
+    _prompt += '  "stamina": 30\n';
+    _prompt += '}\n\n';
+
+    _prompt += '【硬性要求】\n';
+    _prompt += '1. outline 必须包含完整的5个情节节点，每个节点都要有具体内容，不能写"按剧本走"这种废话\n';
+    _prompt += '2. title 必须是像《长夜》《归途》这种正式片名，禁止"XX试镜""XX推荐"\n';
+    _prompt += '3. 只输出JSON，不要解释\n';
+
+    try {
+      var reply = await _callApi([
+        { role: 'system', content: '你只输出合法JSON对象，不要任何其他文字。' },
+        { role: 'user', content: _prompt }
+      ], { temperature: 0.95, max_tokens: 2500 });
+
+      if (!reply) return null;
+      reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      var m = reply.match(/\{[\s\S]*\}/);
+      if (!m) return null;
+      var obj = JSON.parse(m[0]);
+      if (!obj.title || !obj.outline) return null;
+      return obj;
+    } catch(e) {
+      console.warn('[剧本API] 生成失败:', e);
+      return null;
+    }
+  }
+
+  /* 老板特供剧本（AI 优先，模板兜底） */
+  async function _genBossScriptAsync(bossName, bossCompany, mode) {
+    var _lvl = _v('user.等级', 'F级');
+    var _li = LEVEL_ORDER.indexOf(_lvl);
+    var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+    var _bonus = (_baseRewards[_li] || 8000) * 2;
+
+    var _coActors = (COMPANIES[bossCompany] && COMPANIES[bossCompany].actors) || [];
+    var _studios = {
+      '星野事务所': ['月见寮', '白鹭馆'],
+      '远洋经纪':   ['塞纳片场', '潮音别墅'],
+      '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+      '山海经纪':   ['白鹭馆', '塞纳片场'],
+      '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+    }[_bossCompany] || ['白鹭馆'];
+    var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+    var _curWeek = _v('user.当前时间.周数', 1);
+    var _curDay = _v('user.当前时间.星期', '星期一');
+    var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+    var _shootDay = _dayOrder[(_dayOrder.indexOf(_curDay) + 1) % 7];
+
+    /* 先试 AI */
+    var aiResult = await _genScriptWithApi({
+      sceneDesc: (mode === 'self' ? '本公司老板' : '别家公司老板') + '「' + bossName + '」私下给玩家的资源',
+      actors: _coActors,
+      scriptType: 'av'
+    });
+
+    var _title, _tags, _actors, _pairType, _synopsis, _outline, _reward;
+
+    if (aiResult) {
+      _title = aiResult.title;
+      _tags = aiResult.tags || ['剧情', '温柔'];
+      _actors = aiResult.actors && aiResult.actors.length ? aiResult.actors : (_coActors.length ? [_coActors[0]] : []);
+      _pairType = aiResult.pairType || 'GB';
+      _synopsis = aiResult.synopsis || '';
+      _outline = aiResult.outline || '';
+      _reward = aiResult.reward || _bonus;
+    } else {
+      /* 兜底模板 */
+      _title = bossName + (mode === 'self' ? '的内部本' : '的私活');
+      _tags = ['剧情', '温柔'];
+      _actors = _coActors.length ? [_coActors[Math.floor(Math.random() * _coActors.length)]] : [];
+      _pairType = 'GB';
+      _synopsis = '这是' + bossName + '私下给你的资源，剧本简单，但报酬是市场价的两倍。';
+      _outline = '场景：' + _place + '。\n角色关系：你和' + bossName + '达成了某种默契。\n情节走向：\n1.【会面】' + bossName + '把剧本推到你面前。\n2.【条件】' + bossName + '提了一个不写在合同里的要求。\n3.【拍摄】按剧本走。\n4.【收工】' + bossName + '会"看"你的表现。\n拍摄重点：镜头外的东西比镜头内的多。';
+      _reward = _bonus;
+    }
+
+    var _scr = {
+      id: 'boss_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+      title: _title,
+      tags: _tags,
+      actors: _actors,
+      pairType: _pairType,
+      pairTypes: [_pairType],
+      synopsis: _synopsis,
+      outline: _outline,
+      reward: _reward,
+      stamina: 30,
+      scriptType: 'av',
+      fromBoss: bossName,
+      location: _place,
+      shootDay: _shootDay,
+      shootSlot: '上午',
+      custom: true,
+      aiGenerated: !!aiResult
+    };
+
+    var _cache = _loadScrCache();
+    _cache.unshift(_scr);
+    _saveScrCache(_cache);
+
+    return {
+      ok: true,
+      id: _scr.id,
+      title: _title,
+      reward: _reward,
+      place: _place,
+      shootDay: _shootDay,
+      shootSlot: '上午',
+      actor: _actors[0] || '',
+      aiGenerated: !!aiResult
+    };
+  }
+
+  /* 经纪人推荐剧本（AI 优先，模板兜底） */
+  async function _genManagerScriptAsync(mgrName, myCo, mgrFavor) {
+    var _lvl = _v('user.等级', 'F级');
+    var _li = LEVEL_ORDER.indexOf(_lvl);
+    var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+    var _base = _baseRewards[_li] || 8000;
+    var _favorBoost = 1 + Math.min(mgrFavor, 100) / 200;
+    var _reward = Math.round(_base * 1.5 * _favorBoost);
+
+    var _coActors = (COMPANIES[myCo] && COMPANIES[myCo].actors) || [];
+    var _studios = {
+      '星野事务所': ['月见寮', '白鹭馆'],
+      '远洋经纪':   ['塞纳片场', '潮音别墅'],
+      '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+      '山海经纪':   ['白鹭馆', '塞纳片场'],
+      '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+    }[_myCo] || ['白鹭馆'];
+    var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+    var _curWeek = _v('user.当前时间.周数', 1);
+    var _curDay = _v('user.当前时间.星期', '星期一');
+    var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+    var _shootDay = _dayOrder[(_dayOrder.indexOf(_curDay) + 2) % 7];
+
+    /* 类型随机 */
+    var _typePool = [
+      { key: 'tv', name: '电视剧' },
+      { key: 'web', name: '网剧' },
+      { key: 'movie', name: '电影' },
+      { key: 'av', name: 'AV' }
+    ];
+    var _pickType = _typePool[Math.floor(Math.random() * _typePool.length)];
+    var _isFilm = _pickType.key !== 'av';
+
+    var aiResult = await _genScriptWithApi({
+      sceneDesc: '经纪人「' + mgrName + '」为旗下艺人挑选的' + _pickType.name + '项目',
+      actors: _coActors,
+      scriptType: _isFilm ? 'film' : 'av'
+    });
+
+    var _title, _tags, _actors, _pairType, _synopsis, _outline, _finalReward;
+    if (aiResult) {
+      _title = aiResult.title;
+      _tags = aiResult.tags || ['剧情'];
+      _actors = aiResult.actors && aiResult.actors.length ? aiResult.actors : (_coActors.length ? [_coActors[0]] : []);
+      _pairType = aiResult.pairType || 'GB';
+      _synopsis = aiResult.synopsis || '';
+      _outline = aiResult.outline || '';
+      _finalReward = aiResult.reward || _reward;
+    } else {
+      _title = mgrName + '推荐 · ' + _pickType.name + '项目';
+      _tags = ['剧情'];
+      _actors = _coActors.length ? [_coActors[Math.floor(Math.random() * _coActors.length)]] : [];
+      _pairType = 'GB';
+      _synopsis = '这是' + mgrName + '为你挑选的' + _pickType.name + '项目，质量不错，报酬高于市场价。';
+      _outline = '场景：' + _place + '。\n角色关系：' + mgrName + '作为你的经纪人亲自为你挑了本子。\n情节走向：\n1.【递本】' + mgrName + '把剧本递给你，介绍剧情。\n2.【讨论】你们讨论角色、搭档、档期。\n3.【拍摄】按剧本走。\n4.【收工】结算。\n拍摄重点：把握这次机会。';
+      _finalReward = _reward;
+    }
+
+    var _scr = {
+      id: 'mgr_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+      title: _title,
+      filmType: _pickType.key,
+      filmTypeName: _pickType.name,
+      tags: _tags,
+      actors: _actors,
+      pairType: _pairType,
+      pairTypes: [_pairType],
+      synopsis: _synopsis,
+      outline: _outline,
+      reward: _finalReward,
+      stamina: 25 + Math.floor(Math.random() * 15),
+      scriptType: _isFilm ? 'film' : 'av',
+      fromManager: mgrName,
+      location: _place,
+      shootDay: _shootDay,
+      shootSlot: '上午',
+      custom: true,
+      aiGenerated: !!aiResult
+    };
+
+    if (_isFilm) {
+      _scr.auditioned = true;
+      _scr.passed = true;
+      _scr.castingDirector = '（经纪人推荐，免试镜）';
+      var _filmCache = _loadFilmCache();
+      _filmCache.unshift(_scr);
+      _saveFilmCache(_filmCache);
+    } else {
+      var _avCache = _loadScrCache();
+      _avCache.unshift(_scr);
+      _saveScrCache(_avCache);
+    }
+
+    return {
+      ok: true,
+      id: _scr.id,
+      title: _title,
+      reward: _finalReward,
+      place: _place,
+      shootDay: _shootDay,
+      shootSlot: '上午',
+      actor: _actors[0] || '',
+      filmTypeName: _pickType.name,
+      isFilm: _isFilm,
+      aiGenerated: !!aiResult
+    };
+  }
+
+  /* ═══════════════════════════════════════
+     🎁 资源落地工具：生成"老板特供"剧本
+     ═══════════════════════════════════════ */
+  /* bossName   — 老板名字
+     bossCompany — 老板公司
+     mode       — 'self'（自家老板）/ 'other'（别家老板）
+     返回 { ok, title, reward, place, shootDay, shootSlot, actor, id }
+  */
+  function _genBossScript(bossName, bossCompany, mode) {
+    try {
+      if (!bossName) return { ok: false };
+
+      var _lvl = _v('user.等级', 'F级');
+      var _li = LEVEL_ORDER.indexOf(_lvl);
+      var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+      var _bonus = (_baseRewards[_li] || 8000) * 2;  /* 老板特供：市场价 ×2 */
+
+      /* 从老板旗下艺人里随机挑一个合作对象 */
+      var _coActors = (COMPANIES[bossCompany] && COMPANIES[bossCompany].actors) || [];
+      var _pickActor = _coActors.length
+        ? _coActors[Math.floor(Math.random() * _coActors.length)]
+        : '';
+
+      /* 拍摄场地：按老板公司选 */
+      var _studioPool = {
+        '星野事务所': ['月见寮', '白鹭馆'],
+        '远洋经纪':   ['塞纳片场', '潮音别墅'],
+        '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+        '山海经纪':   ['白鹭馆', '塞纳片场'],
+        '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+      };
+      var _studios = _studioPool[bossCompany] || ['白鹭馆'];
+      var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+      /* 开拍时间：明天上午 */
+      var _curWeek = _v('user.当前时间.周数', 1);
+      var _curDay = _v('user.当前时间.星期', '星期一');
+      var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+      var _dayIdx = _dayOrder.indexOf(_curDay);
+      var _shootDay = _dayOrder[(_dayIdx + 1) % 7];
+
+      /* 剧本内容：自家和别家略有不同 */
+      var _title, _synopsis, _outline;
+      if (mode === 'self') {
+        _title = bossName + '的内部本';
+        _synopsis = '这是' + bossName + '在公司内部给你留的资源，本子质量不错，报酬高于市场价。';
+        _outline = '场景：' + _place + '。\n角色关系：你和' + bossName + '之间有某种默契。\n情节走向：\n1.【通知】' + bossName + '让人把剧本送到你手上。\n2.【读本】你翻看剧本，发现质量确实好。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】' + bossName + '会"看"你的表现。\n拍摄重点：这是一次"投资"，你要给出足够的回报。';
+      } else {
+        _title = bossName + '的私活';
+        _synopsis = '这是' + bossName + '私下给你的资源，剧本简单，但报酬是市场价的两倍。';
+        _outline = '场景：私密包厢。\n角色关系：你和' + bossName + '达成了某种默契。\n情节走向：\n1.【会面】' + bossName + '把剧本推到你面前。\n2.【条件】' + bossName + '提了一个不写在合同里的要求。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】' + bossName + '会"看"你的表现。\n拍摄重点：镜头外的东西比镜头内的多。';
+      }
+
+      var _scr = {
+        id: 'boss_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: _title,
+        tags: ['剧情', '温柔'],
+        actors: _pickActor ? [_pickActor] : [],
+        pairType: 'GB',
+        pairTypes: ['GB'],
+        synopsis: _synopsis,
+        outline: _outline,
+        reward: _bonus,
+        stamina: 30,
+        scriptType: 'av',
+        fromBoss: bossName,
+        location: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        custom: true
+      };
+
+      var _cache = _loadScrCache();
+      _cache.unshift(_scr);
+      _saveScrCache(_cache);
+
+      return {
+        ok: true,
+        id: _scr.id,
+        title: _title,
+        reward: _bonus,
+        place: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        actor: _pickActor
+      };
+    } catch(e) {
+      console.warn('[资源落地] 生成老板剧本失败:', e);
+      return { ok: false };
+    }
+  }
+
+  /* ═══════════════════════════════════════
+     🎁 资源落地工具：生成"经纪人推荐"剧本
+     ═══════════════════════════════════════ */
+  /* mgrName  — 经纪人名字
+     myCo     — 玩家当前签约公司
+     mgrFavor — 经纪人好感度
+     返回 { ok, title, reward, place, shootDay, shootSlot, actor, id, filmTypeName }
+  */
+  function _genManagerScript(mgrName, myCo, mgrFavor) {
+    try {
+      if (!mgrName || mgrName === '待选择') return { ok: false };
+
+      var _lvl = _v('user.等级', 'F级');
+      var _li = LEVEL_ORDER.indexOf(_lvl);
+      /* 经纪人推荐：市场价 ×1.5，好感越高报酬越好 */
+      var _baseRewards = [8000, 20000, 50000, 150000, 400000];
+      var _base = _baseRewards[_li] || 8000;
+      var _favorBoost = 1 + Math.min(mgrFavor, 100) / 200;  /* 好感100时 ×1.5 */
+      var _reward = Math.round(_base * 1.5 * _favorBoost);
+
+      /* 从当前公司艺人里挑合作对象 */
+      var _coActors = (COMPANIES[myCo] && COMPANIES[myCo].actors) || [];
+      var _pickActor = _coActors.length
+        ? _coActors[Math.floor(Math.random() * _coActors.length)]
+        : '';
+
+      /* 拍摄场地：按公司选 */
+      var _studioPool = {
+        '星野事务所': ['月见寮', '白鹭馆'],
+        '远洋经纪':   ['塞纳片场', '潮音别墅'],
+        '拾光娱乐':   ['地下拍摄场地', '旧港废弃厂房', '锈河馆'],
+        '山海经纪':   ['白鹭馆', '塞纳片场'],
+        '白鲸娱乐':   ['潮音别墅', '白鹭馆']
+      };
+      var _studios = _studioPool[myCo] || ['白鹭馆'];
+      var _place = _studios[Math.floor(Math.random() * _studios.length)];
+
+      /* 开拍时间：后天上午 */
+      var _curWeek = _v('user.当前时间.周数', 1);
+      var _curDay = _v('user.当前时间.星期', '星期一');
+      var _dayOrder = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+      var _dayIdx = _dayOrder.indexOf(_curDay);
+      var _shootDay = _dayOrder[(_dayIdx + 2) % 7];
+
+      /* 类型：随机电视剧/网剧/电影/AV */
+      var _types = [
+        { key: 'tv', name: '电视剧' },
+        { key: 'web', name: '网剧' },
+        { key: 'movie', name: '电影' },
+        { key: 'av', name: 'AV' }
+      ];
+      var _pickType = _types[Math.floor(Math.random() * _types.length)];
+
+      var _title = mgrName + '推荐 · ' + (_pickType.key === 'av' ? '新本' : _pickType.name + '项目');
+      var _synopsis = _mgrNameText(mgrName, mgrFavor, _pickActor);
+      var _outline = '场景：' + _place + '。\n角色关系：' + mgrName + '作为你的经纪人，亲自为你挑选了这个本子。\n情节走向：\n1.【递本】' + mgrName + '把剧本递给你，介绍剧情。\n2.【讨论】你们讨论角色、搭档、档期。\n3.【拍摄】在' + _place + '按剧本走。\n4.【收工】' + mgrName + '会在现场或探班。\n拍摄重点：' + _mgrNameShootFocus(mgrName) + '。';
+
+      var _scr = {
+        id: 'mgr_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: _title,
+        filmType: _pickType.key,
+        filmTypeName: _pickType.name,
+        tags: ['剧情', '温柔'],
+        actors: _pickActor ? [_pickActor] : [],
+        pairType: 'GB',
+        pairTypes: ['GB'],
+        synopsis: _synopsis,
+        outline: _outline,
+        reward: _reward,
+        stamina: 25 + Math.floor(Math.random() * 15),
+        scriptType: _pickType.key === 'av' ? 'av' : 'film',
+        fromManager: mgrName,
+        location: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        custom: true
+      };
+
+      /* 如果是影视，需要走试镜；AV 直接拍 */
+      if (_pickType.key !== 'av') {
+        _scr.auditioned = false;
+        _scr.passed = false;
+        /* 经纪人推荐的本子，可以直接给"免试镜"待遇 */
+        _scr.passed = true;
+        _scr.auditioned = true;
+        _scr.castingDirector = '（经纪人推荐，免试镜）';
+      }
+
+      var _cache = (_pickType.key === 'av') ? _loadScrCache() : _loadFilmCache();
+      _cache.unshift(_scr);
+      if (_pickType.key === 'av') {
+        _saveScrCache(_cache);
+      } else {
+        _saveFilmCache(_cache);
+      }
+
+      return {
+        ok: true,
+        id: _scr.id,
+        title: _title,
+        reward: _reward,
+        place: _place,
+        shootDay: _shootDay,
+        shootSlot: '上午',
+        actor: _pickActor,
+        filmTypeName: _pickType.name
+      };
+    } catch(e) {
+      console.warn('[资源落地] 生成经纪人剧本失败:', e);
+      return { ok: false };
+    }
+  }
+
+
+  /* 经纪人推荐剧本的简介文案（按性格） */
+  function _mgrNameText(mgrName, mgrFavor, actor) {
+    var _fav = mgrFavor >= 60 ? '（' + mgrName + '挑了很久，是给你的' : '（' + mgrName + '手里的资源，你拿去试试';
+    var _actorPart = actor ? '，搭档是' + actor : '';
+    var _pool = [
+      '这个本子' + _fav + '。' + _actorPart + '。好好演，别丢人。',
+      '我看了剧本，质量不错。' + _actorPart + '。这次机会很难得。',
+      '本来不想接这个活，但想到你，还是拿下了。' + _actorPart + '。',
+      '本子拿到了' + _actorPart + '。这次我盯着你拍。'
+    ];
+    return _pool[Math.floor(Math.random() * _pool.length)];
+  }
+
+  /* 经纪人推荐剧本的"拍摄重点"（按经纪人性格） */
+  function _mgrNameShootFocus(mgrName) {
+    var _map = {
+      '苏晚晴': '苏晚晴看重你的状态，会提醒你别太拼命',
+      '陈昀':   '陈昀会在现场盯着，不允许你划水',
+      '林栩':   '林栩懒得管你，但资源已经到位了',
+      '赵言':   '赵言会借这次机会炒作，你要有心理准备',
+      'Diana Park': 'Diana 会帮你挡掉不必要的麻烦'
+    };
+    return _map[mgrName] || '这次拍摄是一次机会，认真对待';
   }
 
   /* ═══════════════════════════════════════
@@ -5154,7 +5945,7 @@ function _setLyricTransEnabled(v) {
 .av-story-act-btn.danger{background:rgba(80,20,20,.75);color:#ff9999;border:1px solid rgba(255,100,100,.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .av-story-act-btn.danger:hover{background:rgba(120,30,30,.9);border-color:rgba(255,100,100,.8)}
 .av-story-hist-overlay{position:absolute;inset:0;background:rgba(0,0,0,.92);z-index:10001;display:flex;flex-direction:column;animation:avIn .2s ease}
-.av-story-hist-header{display:flex;justify-content:space-between;align-items:center;padding:50px 16px 10px;flex-shrink:0}
+.av-story-hist-header{display:flex;justify-content:space-between;align-items:center;padding:20px 16px 10px;flex-shrink:0}
 .av-story-hist-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:2px}
 .av-story-hist-close{font-size:12px;color:rgba(255,255,255,.4);cursor:pointer;padding:6px 10px;border-radius:8px;transition:all .2s}
 .av-story-hist-close:hover{color:#fff;background:rgba(255,255,255,.1)}
@@ -6593,78 +7384,13 @@ function _wirePhone() {
            支持 <tag>...</tag>、<tag/>、未闭合的 <tag>...（到文本末尾）
            以后遇到新的元数据标签，往数组里加一条即可。
            ═══════════════════════════════════════════════════════════ */
-        (function _cleanSystemTags() {
-          var SYS_TAGS = [
-            /* ── AI 思考/内部推理 ── */
-            'COT', 'cot', 'CoT',
-            'think', 'thinking', 'reasoning', 'reason',
-            'analysis', 'Analysis',
-            'scratchpad', 'internal',
-            /* ── 结构/系统标签 ── */
-            'UpdateVariable',
-            'StatusPlaceHolderImpl',
-            'disclaimer',
-            'draft',
-            'meta', 'note', 'commentary', 'annotation',
-            'warning', 'caution', 'notice',
-            /* ── 脚本自己的标签（应在外层处理）── */
-            /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
-            /* ── 你自己遇到的额外标签，往这里加 ── */
-            'gossip',
-            'electric',
-            'case_file',
-            'electric',
-            'title',
-            'Vol',
-            'vol'
-          ];
-          SYS_TAGS = _getAllSystemTags(SYS_TAGS);
-          for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
-            var tag = SYS_TAGS[_ti];
-            /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
-            text = text.replace(
-              new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?<\\/' + tag + '>', 'gi'),
-              ''
-            );
-            /* 2. 自闭合 <tag/> 或 <tag /> */
-            text = text.replace(
-              new RegExp('<' + tag + '(?:\\s[^>]*)?\\/\\s*>', 'gi'),
-              ''
-            );
-            /* 3. 未闭合兜底：从 <tag...> 一直删到文本末尾 */
-            if (new RegExp('<' + tag + '(?:\\s[^>]*)?>', 'i').test(text)) {
-              text = text.replace(
-                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*$', 'gi'),
-                ''
-              );
-            }   /* ← 补上这个右大括号 */
-            /* 4. 孤儿闭合标签（前面没有开始标签，比如 </case_file>、</electric>） */
-            text = text.replace(
-              new RegExp('<\\/' + tag + '(?:\\s[^>]*)?>', 'gi'),
-              ''
-            );
-          }
-          /* 5. HTML 注释 <!-- ... -->（多行 / 单行都要清） */
-          text = text.replace(/<!--[\s\S]*?-->/g, '');
-          /* 6. ::: 格式块 ::: ... ::: 一起清掉 */
-          text = text.replace(/:::[\s\S]*?:::/g, '');
-          /* 7. 通用兜底：清掉所有 HTML 风格的闭合标签（含自定义标签） */
-          text = text.replace(/<\/[a-zA-Z_][a-zA-Z0-9_\-]*>/g, '');
-          /* 8. 通用兜底：清掉 [title]xxx[/title] 之类的方括号元信息 */
-          text = text.replace(/\[title\][\s\S]*?\[\/title\]/gi, '');
-          /* 9. 通用兜底：清掉独立成行的 ## xxx 元信息标题 */
-          text = text.split('\n').filter(function(line) {
-            return !/^\s*##\s*(Vol\.|第\s*\d+\s*(章|卷|节)|顺序检查|执行检查|检查清单)/i.test(line);
-          }).join('\n');
-        })();
-        
-        /* ═══ 抓取小剧场（必须在 <content> 提取之前！） ═══ */
+        /* ═══ 1. 先抓小剧场（必须在清洗之前！） ═══ */
         try {
           var _snowResult = _extractSnowStories(text);
+          console.log('[SNOW调试] stories数量:', _snowResult.stories.length, '清洗后含<snow>:', _snowResult.cleanedText.indexOf('<snow>') >= 0);
           if (_snowResult.stories.length) {
             text = _snowResult.cleanedText.trim();
             var _curWeek = _v('user.当前时间.周数', 1);
-            var _weekKey = '第' + _curWeek + '周';
             var _allSnow = _loadSnowStories();
             /* ═══ 兼容旧数据：如果有按周分组的，迁移到 _flat ═══ */
             if (!_allSnow._flat) {
@@ -6707,10 +7433,79 @@ function _wirePhone() {
                 ts: Date.now(),
                 read: false
               });
-    }
-  }
-} catch(e) { console.warn('[Snow] 抓取失败:', e); }
+            }
+            /* ═══ 关键：加这一行保存 ═══ */
+            _saveSnowStories(_allSnow);
+          }
+        } catch(e) { console.warn('[Snow] 抓取失败:', e); }
 
+        /* ═══ 2. 再清洗系统标签 ═══ */
+        (function _cleanSystemTags() {
+          var SYS_TAGS = [
+            /* ── AI 思考/内部推理 ── */
+            'COT', 'cot', 'CoT',
+            'think', 'thinking', 'reasoning', 'reason',
+            'analysis', 'Analysis',
+            'scratchpad', 'internal',
+            /* ── 结构/系统标签 ── */
+            'UpdateVariable',
+            'StatusPlaceHolderImpl',
+            'disclaimer',
+            'draft',
+            'meta', 'note', 'commentary', 'annotation',
+            'warning', 'caution', 'notice',
+            /* ── 脚本自己的标签（应在外层处理）── */
+            /* 'snow', 'sidestory' 由 _extractSnowStories 处理，不在这里删 */
+            /* ── 你自己遇到的额外标签，往这里加 ── */
+            'gossip',
+            'electric',
+            'case_file',
+            'electric',
+            'title',
+            'Vol',
+            'vol',
+            'av_script'
+          ];
+          SYS_TAGS = _getAllSystemTags(SYS_TAGS);
+          for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
+            var tag = SYS_TAGS[_ti];
+            /* 1. 完整块 <tag ...>...</tag>（忽略大小写） */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?<\\/' + tag + '>', 'gi'),
+              ''
+            );
+            /* 2. 自闭合 <tag/> 或 <tag /> */
+            text = text.replace(
+              new RegExp('<' + tag + '(?:\\s[^>]*)?\\/\\s*>', 'gi'),
+              ''
+            );
+            /* 3. 未闭合兜底：只删到下一个块级标签前（避免吞掉 <snow>/<av_script> 后面的内容） */
+            if (new RegExp('<' + tag + '(?:\\s[^>]*)?>', 'i').test(text)) {
+              text = text.replace(
+                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?(?=<(?:snow|sidestory|av_script|UpdateVariable|StatusPlaceHolderImpl|content)\\b|$)', 'gi'),
+                ''
+              );
+            }
+            /* 4. 孤儿闭合标签（前面没有开始标签，比如 </case_file>、</electric>） */
+            text = text.replace(
+              new RegExp('<\\/' + tag + '(?:\\s[^>]*)?>', 'gi'),
+              ''
+            );
+          }
+          /* 5. HTML 注释 <!-- ... -->（多行 / 单行都要清） */
+          text = text.replace(/<!--[\s\S]*?-->/g, '');
+          /* 6. ::: 格式块 ::: ... ::: 一起清掉 */
+          text = text.replace(/:::[\s\S]*?:::/g, '');
+          /* 7. 通用兜底：清掉所有 HTML 风格的闭合标签（含自定义标签） */
+          text = text.replace(/<\/[a-zA-Z_][a-zA-Z0-9_\-]*>/g, '');
+          /* 8. 通用兜底：清掉 [title]xxx[/title] 之类的方括号元信息 */
+          text = text.replace(/\[title\][\s\S]*?\[\/title\]/gi, '');
+          /* 9. 通用兜底：清掉独立成行的 ## xxx 元信息标题 */
+          text = text.split('\n').filter(function(line) {
+            return !/^\s*##\s*(Vol\.|第\s*\d+\s*(章|卷|节)|顺序检查|执行检查|检查清单)/i.test(line);
+          }).join('\n');
+        })();
+        
 /* ═══ 再提取 <content> ═══ */
         /* ═══ 优先提取最外层 <content> 块（用最后一个 </content> 做结束） ═══ */
         var _contentStart = text.search(/<content[^>]*>/i);
@@ -7661,12 +8456,13 @@ if (!items.length) {
         var maxFloor = floorOrder.length ? floorOrder[floorOrder.length - 1] : 0;
 
         var html = '<div id="av-story-hist-panel" class="av-story-hist-overlay" style="z-index:10001">';
-        html += '<div class="av-story-hist-header">';
+        /* ═══ 关闭按钮单独绝对定位，避免 header padding 把它挤出可视区 ═══ */
+        html += '<div id="av-story-hist-close" style="position:absolute;top:12px;right:14px;z-index:10;font-size:14px;color:rgba(255,255,255,.7);cursor:pointer;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">✕ 关闭</div>';
+        html += '<div class="av-story-hist-header" style="padding-top:52px">';
         html += '<div class="av-story-hist-title">📜 剧情回顾</div>';
-        html += '<div style="display:flex;gap:6px">';
-        html += '<div class="av-story-hist-expand-all" style="font-size:10px;color:rgba(255,255,255,.5);cursor:pointer;padding:6px 10px;border-radius:8px">展开全部</div>';
-        html += '<div class="av-story-hist-collapse-all" style="font-size:10px;color:rgba(255,255,255,.5);cursor:pointer;padding:6px 10px;border-radius:8px">收起全部</div>';
-        html += '<div class="av-story-hist-close" id="av-story-hist-close">✕ 关闭</div>';
+        html += '<div style="display:flex;gap:6px;margin-left:auto">';
+        html += '<div class="av-story-hist-expand-all" ...>展开全部</div>';
+        html += '<div class="av-story-hist-collapse-all" ...>收起全部</div>';
         html += '</div>';
         html += '</div>';
         html += '<div class="av-story-hist-body" id="av-story-hist-body">';
@@ -15187,7 +15983,37 @@ if (!_curHome) _curHome = '铁皮屋';  /* 真没找到才用默认 */
       w.find('#av-boss-no').on('click', () => w.remove());
       w.find('#av-boss-self').on('click', () => {
         w.remove();
-        if (typeof triggerSlash === 'function') triggerSlash('/send 我决定去潮汐湾高级会所见本公司老板，用特殊方式换取内部的更好资源 | /trigger');
+        var _myCo = _v('user.当前签约公司', '未签约');
+        var _bossName = (_BOSSES[_myCo] && _BOSSES[_myCo].name) || '';
+        if (!_bossName) {
+          if (typeof triggerSlash === 'function') triggerSlash('/echo severity=warning 找不到本公司老板信息');
+          return;
+        }
+
+        /* ═══ 脚本兜底：生成自家老板特供剧本 ═══ */
+        var _r = _genBossScript(_bossName, _myCo, 'self');
+
+        if (_r && _r.ok && typeof triggerSlash === 'function') {
+          triggerSlash('/echo severity=success ' + _bossName + ' 给了你一个内部剧本《' + _r.title + '》，报酬' + _r.reward + '，' + _r.shootDay + _r.shootSlot + '在' + _r.place + '开拍，已加入接本列表');
+        }
+
+        if (typeof triggerSlash === 'function') {
+          var _msg = '我前往潮汐湾高级会所见本公司（' + _myCo + '）的老板' + _bossName + '，用特殊方式换取内部的更好资源。\n';
+          if (_r && _r.ok) {
+            _msg += '【重要 · 资源已落地】\n';
+            _msg += _bossName + '已经把内部剧本《' + _r.title + '》给到我了，报酬 ' + _r.reward + ' 金币，\n';
+            _msg += '拍摄地点：' + _r.place + '，开拍时间：' + _r.shootDay + _r.shootSlot + '。\n';
+            _msg += '这个剧本已经写入了接本APP的剧本列表，我随时可以去接。\n\n';
+            _msg += '【演绎要求】\n';
+            _msg += '1. 请在正文里明确交代：剧本什么时候到手、在哪拍、什么时候开拍\n';
+            _msg += '2. 禁止只写"明天给你""回头安排"这种悬空承诺\n';
+            _msg += '3. 在 <UpdateVariable> 里，往 user.行程表 插入一条拍摄行程：\n';
+            _msg += '   ID：行程_' + _v('user.当前时间.周数', 1) + '_bosself，标题：' + _r.title + '，类型：拍摄，周数：' + _v('user.当前时间.周数', 1) + '，星期：' + _r.shootDay + '，时段：' + _r.shootSlot + '，地点：' + _r.place + '，相关人物：[' + (_r.actor || '') + ']，剧本ID：' + _r.id + '，状态：待进行\n';
+            _msg += '4. 同时更新当前拍摄剧本（uid 5）为《' + _r.title + '》的完整信息\n\n';
+          }
+          _msg += ' | /trigger';
+          triggerSlash('/send ' + _msg);
+        }
       });
       w.find('#av-boss-other').on('click', () => {
         w.remove();
@@ -15358,13 +16184,45 @@ if (!_curHome) _curHome = '铁皮屋';  /* 真没找到才用默认 */
         var act = $(this).data('act');
         switch(act) {
           case 'recommend':
-            var recScr = _loadScrCache();
-            if (!recScr.length) {
-              if (typeof triggerSlash === 'function') triggerSlash('/echo severity=info 还没有剧本，先去接本APP生成剧本');
-              _screen = 'scripts'; _render();
-            } else {
-              _screen = 'scripts'; _render();
-              setTimeout(function() { $('#av-scr-mgr-rec').click(); }, 100);
+            var _mgrName = _v('经纪人.姓名', '待选择');
+            var _mgrFavor = _v('经纪人.好感度', 0);
+            var _myCo2 = _v('user.当前签约公司', '未签约');
+
+            /* ═══ 脚本兜底：经纪人主动带一个剧本给你 ═══ */
+            var _r = _genManagerScript(_mgrName, _myCo2, _mgrFavor);
+
+            if (_r && _r.ok && typeof triggerSlash === 'function') {
+              triggerSlash('/echo severity=success ' + _mgrName + ' 给你带了一个剧本《' + _r.title + '》，报酬' + _r.reward + '，已加入接本列表');
+            }
+
+            /* 跳到接本APP */
+            _screen = 'scripts'; _render();
+            /* 高亮新剧本 */
+            if (_r && _r.ok) {
+              setTimeout(function() {
+                var $card = $('.av-scr-card').first();
+                if ($card.length) {
+                  $card.css('box-shadow', '0 0 20px rgba(255,120,180,.6)');
+                  setTimeout(function() { $card.css('box-shadow', ''); }, 3000);
+                }
+              }, 300);
+            }
+
+            if (typeof triggerSlash === 'function') {
+              var _msg = '我找经纪人' + _mgrName + '聊了聊，' + _mgrName + '给我带了一个剧本。\n';
+              if (_r && _r.ok) {
+                _msg += '【重要 · 资源已落地】\n';
+                _msg += '剧本《' + _r.title + '》，类型：' + _r.filmTypeName + '，报酬 ' + _r.reward + ' 金币，\n';
+                _msg += '拍摄地点：' + _r.place + '，开拍时间：' + _r.shootDay + _r.shootSlot + '。\n';
+                _msg += '这个剧本已经写入了接本APP的剧本列表。\n\n';
+                _msg += '【演绎要求】\n';
+                _msg += '1. 请在正文里写出' + _mgrName + '把剧本递给我、介绍剧本内容的过程\n';
+                _msg += '2. 根据' + _mgrName + '的性格（' + _mgrName + '的好感度：' + _mgrFavor + '）演绎这次互动\n';
+                _msg += '3. 在 <UpdateVariable> 里，往 user.行程表 插入一条拍摄行程：\n';
+                _msg += '   ID：行程_' + _v('user.当前时间.周数', 1) + '_mgr，标题：' + _r.title + '，类型：拍摄，周数：' + _v('user.当前时间.周数', 1) + '，星期：' + _r.shootDay + '，时段：' + _r.shootSlot + '，地点：' + _r.place + '，相关人物：[' + (_r.actor || '') + ']，剧本ID：' + _r.id + '，状态：待进行\n\n';
+              }
+              _msg += ' | /trigger';
+              triggerSlash('/send ' + _msg);
             }
             break;
           case 'talk':
@@ -21885,7 +22743,8 @@ switch(sid) {
             'electric',
             'title',
             'Vol',
-            'vol'
+            'vol',
+            'av_script'
           ];
           SYS_TAGS = _getAllSystemTags(SYS_TAGS);
           for (var _ti = 0; _ti < SYS_TAGS.length; _ti++) {
@@ -21900,10 +22759,10 @@ switch(sid) {
               new RegExp('<' + tag + '(?:\\s[^>]*)?\\/\\s*>', 'gi'),
               ''
             );
-            /* 3. 未闭合兜底：从 <tag...> 一直删到文本末尾 */
+            /* 3. 未闭合兜底：只删到下一个块级标签前（避免吞掉 <snow>/<av_script> 后面的内容） */
             if (new RegExp('<' + tag + '(?:\\s[^>]*)?>', 'i').test(text)) {
               text = text.replace(
-                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*$', 'gi'),
+                new RegExp('<' + tag + '(?:\\s[^>]*)?>[\\s\\S]*?(?=<(?:snow|sidestory|av_script|UpdateVariable|StatusPlaceHolderImpl|content)\\b|$)', 'gi'),
                 ''
               );
             }
@@ -22336,12 +23195,36 @@ function _clearGameData() {
   /* ═══════════════════════════════════════
      事件监听
      ═══════════════════════════════════════ */
-  function _wireEvents() {
+     function _wireEvents() {
+      console.log('[AV心跳] _wireEvents 被调用了，tavern_events =', typeof tavern_events, 'eventOn =', typeof eventOn);
+      if (typeof tavern_events === 'undefined') return;
     if (typeof tavern_events === 'undefined') return;
     const r = () => { if (_visible) _render(); _updateChrome(); };
     eventOn(tavern_events.CHARACTER_MESSAGE_RENDERED, r);
     eventOn(tavern_events.CHARACTER_MESSAGE_RENDERED, function() {
       setTimeout(function() { if (typeof ScenePlayer !== 'undefined') ScenePlayer.capture(); }, 1500);
+    });
+
+    /* ═══ 每次AI回复后，扫描 <av_script> 块，写入剧本缓存 ═══ */
+    eventOn(tavern_events.CHARACTER_MESSAGE_RENDERED, function() {
+      setTimeout(function() {
+        try {
+          var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+          if (!ctx || !ctx.chat || !ctx.chat.length) return;
+          var last = null;
+          for (var i = ctx.chat.length - 1; i >= 0; i--) {
+            if (!ctx.chat[i].is_user) { last = ctx.chat[i]; break; }
+          }
+          if (!last || !last.mes) return;
+          var added = _parseAvScriptBlocks(last.mes);
+          if (added > 0) {
+            console.log('[AV] 解析到 ' + added + ' 个剧本块');
+            if (typeof _screen !== 'undefined' && (_screen === 'work' || _screen === 'scripts' || _screen === 'scene')) {
+              try { _render(); } catch(e) {}
+            }
+          }
+        } catch(e) { console.warn('[av_script解析]', e); }
+      }, 2000);
     });
 
     eventOn(tavern_events.CHARACTER_MESSAGE_RENDERED, function() {
@@ -26954,6 +27837,124 @@ function _clearGameData() {
 
   console.log('[AV兜底] 补丁已安装，三个按钮将走原生捕获监听');
 })();
+
+  /* ═══════════════════════════════════════════════════════════
+     📥 终极兜底：不依赖事件系统，定时扫描 <av_script>
+     ═══════════════════════════════════════════════════════════ */
+  window._parseAvScriptBlocksFinal = function(text) {
+    if (!text) return 0;
+    /* ═══ 匹配所有 <av_script>...</av_script> 块，逐个尝试解析 ═══ */
+    var re = /<av_script>([\s\S]*?)<\/av_script>/gi;
+    var m, added = 0;
+    var allBlocks = [];
+    while ((m = re.exec(text)) !== null) {
+      allBlocks.push(m[1] || '');
+    }
+    /* ═══ 倒序处理（优先处理正文末尾真正的块） ═══ */
+    allBlocks.reverse();
+    console.log('[兜底] 找到 ' + allBlocks.length + ' 个 <av_script> 块，倒序解析');
+    var avCache = [];
+    var filmCache = [];
+    try { avCache = JSON.parse(localStorage.getItem('av-scripts-cache-v2') || '[]'); } catch(e) {}
+    try { filmCache = JSON.parse(localStorage.getItem('av-film-scripts-cache') || '[]'); } catch(e) {}
+    var existTitles = {};
+    avCache.forEach(function(s) { if (s && s.title) existTitles[s.title] = true; });
+    filmCache.forEach(function(s) { if (s && s.title) existTitles[s.title] = true; });
+
+    for (var bi = 0; bi < allBlocks.length; bi++) {
+      var raw = (allBlocks[bi] || '').trim();
+      if (!raw) continue;
+      /* 去除可能包裹的 markdown 代码块标记 */
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      /* ═══ 去除块首尾可能的中文/反引号/空白（AI 举例讲解时会混入） ═══ */
+      raw = raw.replace(/^[^\{]*/, '').replace(/[^\}]*$/, '').trim();
+      if (!raw) continue;
+      var obj = null;
+      try { obj = JSON.parse(raw); } catch(e) {
+        try { obj = JSON.parse(raw.replace(/,(\s*[\]}])/g, '$1')); } catch(e2) {}
+      }
+      if (!obj || !obj.title) {
+        console.log('[兜底] 第 ' + (bi + 1) + ' 个块解析失败或缺少 title，跳过');
+        continue;
+      }
+      if (existTitles[obj.title]) { console.log('[兜底] 跳过重复:', obj.title); continue; }
+      var scr = {
+        id: 'ai_scr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        title: obj.title,
+        scriptType: obj.scriptType || 'av',
+        filmType: obj.filmType || (obj.scriptType === 'film' ? 'movie' : ''),
+        filmTypeName: obj.filmTypeName || '',
+        tags: obj.tags || ['剧情'],
+        actors: obj.actors || [],
+        pairType: obj.pairType || 'GB',
+        pairTypes: [obj.pairType || 'GB'],
+        synopsis: obj.synopsis || '',
+        outline: obj.outline || '',
+        reward: obj.reward || 20000,
+        stamina: obj.stamina || 30,
+        location: obj.location || '',
+        shootDay: obj.shootDay || '',
+        shootSlot: obj.shootSlot || '',
+        custom: true,
+        fromAI: true
+      };
+      if (scr.scriptType === 'film') {
+        scr.auditioned = true;
+        scr.passed = true;
+        scr.castingDirector = obj.castingDirector || '（AI生成）';
+        filmCache.unshift(scr);
+      } else {
+        avCache.unshift(scr);
+      }
+      existTitles[obj.title] = true;
+      added++;
+      if (typeof triggerSlash === 'function') {
+        triggerSlash('/echo severity=success 剧本《' + scr.title + '》已收录到接本列表（AI生成）');
+      }
+    }
+    if (added > 0) {
+      try { localStorage.setItem('av-scripts-cache-v2', JSON.stringify(avCache)); } catch(e) {}
+      try { localStorage.setItem('av-film-scripts-cache', JSON.stringify(filmCache)); } catch(e) {}
+    }
+    return added;
+  };
+
+  /* ═══ 定时器：每 3 秒扫描最新 AI 消息 ═══ */
+  var _avFinalLastIdx = -1;
+  var _avFinalLastLen = -1;
+  setInterval(function() {
+    try {
+      var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+      if (!ctx || !ctx.chat || !ctx.chat.length) return;
+      var last = null, lastIdx = -1;
+      for (var i = ctx.chat.length - 1; i >= 0; i--) {
+        if (!ctx.chat[i].is_user) { last = ctx.chat[i]; lastIdx = i; break; }
+      }
+      if (!last || !last.mes) return;
+      /* 同一条消息且长度没变 → 跳过 */
+      if (lastIdx === _avFinalLastIdx && last.mes.length === _avFinalLastLen) return;
+      if (last.mes.indexOf('<av_script>') < 0) {
+        _avFinalLastIdx = lastIdx;
+        _avFinalLastLen = last.mes.length;
+        return;
+      }
+      _avFinalLastIdx = lastIdx;
+      _avFinalLastLen = last.mes.length;
+      var added = window._parseAvScriptBlocksFinal(last.mes);
+      if (added > 0) {
+        console.log('[兜底定时器] 收录 ' + added + ' 个AI剧本');
+        try {
+          if (typeof _render === 'function' && typeof _screen !== 'undefined') {
+            if (_screen === 'work' || _screen === 'scripts') _render();
+          }
+        } catch(e) {}
+      }
+    } catch(e) {
+      console.warn('[兜底定时器] 出错:', e);
+    }
+  }, 3000);
+
+  console.log('[终极兜底] 已挂载');
 
   $(document).ready(_boot);
 })();
